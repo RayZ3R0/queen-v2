@@ -53,7 +53,9 @@
   ],
   "dependencies": {
     "discord.js": "^14.17.3",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "mongoose": "^8.10.1",
+    "simply-xp": "2.0.0-beta.1"
   },
   "engines": {
     "node": ">=16"

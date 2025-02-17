@@ -1,5 +1,13 @@
 import "dotenv/config";
+import mongoose from "mongoose";
 import { Bot } from "./handlers/Client.js";
+
+// Connect to MongoDB
+const mongodbUri = process.env.MONGODB_URI;
+mongoose
+  .connect(mongodbUri)
+  .then(() => console.log("> ✅ Connected to MongoDB"))
+  .catch((err) => console.error("> ❌ Failed to connect to MongoDB:", err));
 
 /**
  * The client instance representing the bot.
