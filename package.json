@@ -52,10 +52,13 @@
     "discord bot example"
   ],
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.67",
     "discord.js": "^14.17.3",
     "dotenv": "^16.4.7",
     "mongoose": "^8.10.1",
-    "simply-xp": "2.0.0-beta.1"
+    "path": "^0.12.7",
+    "simply-xp": "1.3.7",
+    "url": "^0.11.4"
   },
   "engines": {
     "node": ">=16"
