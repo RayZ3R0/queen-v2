@@ -1,6 +1,6 @@
 {
   "name": "queen-v2",
-  "version": "2.1.0",
+  "version": "2.0.0",
   "description": "Queen bot",
   "main": "bot.js",
   "type": "module",
