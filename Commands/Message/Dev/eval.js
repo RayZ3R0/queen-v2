@@ -4,7 +4,7 @@ import util from "node:util";
 export default {
   name: "eval",
   description: "Evaluates JavaScript code and returns the output. (Owner Only)",
-  ownerOnly: true,
+  owneronly: true,
   aliases: [],
   cooldown: 0,
   userPermissions: [],
