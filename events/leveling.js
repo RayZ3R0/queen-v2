@@ -1,5 +1,6 @@
 import { client } from "../bot.js"; // Adjust path if needed
 import addXP from "../utils/addXP.js"; // Ensure this file exports a named "roleSetup"
+import lvlRole from "../utils/lvlRole.js";
 
 const spame = [];
 
@@ -37,6 +38,8 @@ client.on("messageCreate", async (message) => {
     const index = spame.indexOf(message.author.id);
     if (index !== -1) spame.splice(index, 1);
   }, 60000);
+
+  lvlRole(message, message.author.id, message.guild.id);
 });
 
 client.on("levelUp", async (message, data, role) => {
