@@ -1,0 +1,91 @@
+{
+    "Tohka Yatogami": {
+        "hp": 1000,
+        "strength": 355,
+        "defence": 202,
+        "agility": 142,
+        "abilities": ["Halvanhelev", "Ratelibish"],
+        "quotes": "──My name is Yatogami Tohka. An important name given to me by a important person. ──Isn’t that nice?"
+    },
+    "Kurumi Tokisaki": {
+        "hp": 1100,
+        "strength": 329,
+        "defence": 80,
+        "agility": 103,
+        "abilities": ["Zayin", "Dalet"],
+        "quotes": "You were ready to kill another creature, yet you're scared to be killed. Don't you think that's weird? When you point a gun at another life... This is what happens."
+    },
+    "Himekawa Yoshino": {
+        "hp": 1100,
+        "strength": 294,
+        "defence": 82,
+        "agility": 212,
+        "abilities": ["Freeze", "Frozen World"],
+        "quotes": "I…… hate, painful things. I also hate…… scary things. Surely, those people too…… whether its pain, or scary things, I think they…… don't want it too. That's why, I……"
+    },
+    "Kaguya Yamai": {
+        "hp": 900,
+        "strength": 359,
+        "defence": 140,
+        "agility": 240,
+        "abilities": ["El Re'em", "El Kanaph"],
+        "quotes": "I don’t want to die… I want to live… I, I want to be with Yuzuru more."
+    },
+    "Yuzuru Yamai": {
+        "hp": 900,
+        "strength": 355,
+        "defence": 129,
+        "agility": 240,
+        "abilities": ["El Na'ash", "El Kanaph"],
+        "quotes": "Reply- Yuzuru.. too. I don’t want to disappear. I want to live with Kaguya."
+    },
+    "Miku Izayoi": {
+        "hp": 1200,
+        "strength": 244,
+        "defence": 72,
+        "agility": 57,
+        "abilities": ["Solo", "Fantasia"],
+        "quotes": "I──Lost it. Once. Because of those ugly males, I lost my voice because of a psychological disorder──the voice……the voice more important than my life………..!"
+    },
+    "Kyouno Natsumi": {
+        "hp": 1300,
+        "strength": 259,
+        "defence": 65,
+        "agility": 82,
+        "abilities": ["Kaleidoscope"],
+        "quotes": "When you all gave me a massage, I was happy. When you all cut my hair I was happy, when you all chose clothes for me. I was happy, when you all put make-up on me I was happy uh, when everyone told me I was cute, I was happy! Even when I was that happy. I did not say it at that time, sorry. Thank………… you"
+    },
+    "Tobiichi Origami": {
+        "hp": 1100,
+        "strength": 377,
+        "defence": 152,
+        "agility": 136,
+        "abilities": ["CR-Unit <White Licorice> Mode", "CR-Unit <Alice> Mode"],
+        "quotes": "I will leave my tears with you. I will give you my smile. Please take my happiness, enjoyment, everything, This will be the last time I cry. This will also be the last time I smile. But, this anger is only mine. This ugly emotion is only mine----I will kill. I will-----that Angel. No matter how long it takes. No matter what method it takes, So until then, please keep them for me. Until.... I kill that Angel"
+    },
+    "Mukuro Hoshimiya": {
+        "hp": 1100,
+        "strength": 347,
+        "defence": 121,
+        "agility": 138,
+        "abilities": ["Segva", "Shifuru"],
+        "quotes": "Needless to vociferate, Nushi-sama shall trim it for Muku, ay? Barring family, none may lay a finger on this hair."
+    },
+    "Kotori Itsuka": {
+        "hp": 1000,
+        "strength": 365,
+        "defence": 100,
+        "agility": 130,
+        "abilities": ["Megiddo", "Heated Regeneration"],
+        "quotes": "Doing something so stupid………! You should only listen to what I say!………… You have to properly, make proper calculations on the recovery limit beforehand……..! And move accordingly to what I say, it will definitely be safer…………"
+    },
+    "Nia Honjou": {
+        "hp": 1300,
+        "strength": 202,
+        "defence": 59,
+        "agility": 64,
+        "abilities": ["Healer", "Booster"],
+        "quotes": "—Isn't it your job to make the Spirits fall for you boy? No………Itsuka Shido-kun?"
+    }
+
+}
