@@ -1,5 +1,4 @@
 import { client } from "../bot.js"; // Adjust path if needed
-import levelModel from "../schema/level.js";
 import addXP from "../utils/addXP.js"; // Ensure this file exports a named "roleSetup"
 
 const spame = [];
@@ -38,4 +37,14 @@ client.on("messageCreate", async (message) => {
     const index = spame.indexOf(message.author.id);
     if (index !== -1) spame.splice(index, 1);
   }, 60000);
+});
+
+client.on("levelUp", async (message, data, role) => {
+  try {
+    await message.reply({
+      content: `Congratulations ${message.author}, you have reached level **${data.level}**.`,
+    });
+  } catch (error) {
+    console.error("Error handling level up event:", error);
+  }
 });

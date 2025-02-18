@@ -15,7 +15,7 @@ export default {
   botPermissions: [PermissionFlagsBits.BanMembers],
   category: "Moderation",
 
-  run: async ({ client, message, args, prefix }) => {
+  run: async ({ message, args }) => {
     try {
       if (!message.guild)
         return message.channel.send(
