@@ -30,7 +30,8 @@ export default {
     if (!args[0]) {
       // Group commands by their category.
       const categories = {};
-      client.commands.forEach((cmd) => {
+      // Use client.mcommands (message commands collection)
+      client.mcommands.forEach((cmd) => {
         const category = cmd.category || "Uncategorized";
         if (!categories[category]) categories[category] = [];
         categories[category].push({
@@ -38,12 +39,14 @@ export default {
           description: cmd.description || "No description provided.",
         });
       });
+
       // Build select menu options from category names.
       const options = Object.entries(categories).map(([cat]) => ({
         label: cat,
         value: cat.toLowerCase(),
         description: `Show commands from ${cat}.`,
       }));
+
       // Create the initial embed.
       const helpEmbed = new EmbedBuilder()
         .setTitle("Help Menu")
@@ -51,22 +54,26 @@ export default {
           `Select a category below to view its commands.\nFor detailed info on a command, use \`${cmdPrefix}help <command>\`.`
         )
         .setColor(roleColor);
+
       // Build the select menu component.
       const selectMenu = new StringSelectMenuBuilder()
         .setCustomId("help-menu")
         .setPlaceholder("Select a category")
         .addOptions(options);
       const row = new ActionRowBuilder().addComponents(selectMenu);
+
       const initialMessage = await message.channel.send({
         embeds: [helpEmbed],
         components: [row],
       });
+
       // Create a collector for menu interactions.
       const collector = message.channel.createMessageComponentCollector({
         filter: (interaction) => interaction.user.id === message.author.id,
         componentType: ComponentType.StringSelect,
         time: 60000,
       });
+
       collector.on("collect", async (interaction) => {
         const selectedCategory = interaction.values[0];
         // Find the proper category key (case-insensitive).
@@ -83,6 +90,7 @@ export default {
           .setTimestamp();
         await interaction.update({ embeds: [categoryEmbed] });
       });
+
       collector.on("end", () => {
         initialMessage.edit({ components: [] });
       });
@@ -91,8 +99,8 @@ export default {
       // Detailed help for a specific command based on the provided argument.
       const search = args[0].toLowerCase();
       const command =
-        client.commands.get(search) ||
-        client.commands.find(
+        client.mcommands.get(search) ||
+        client.mcommands.find(
           (cmd) =>
             cmd.aliases &&
             cmd.aliases.map((a) => a.toLowerCase()).includes(search)
