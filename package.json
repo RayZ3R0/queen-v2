@@ -1,22 +1,22 @@
 {
-  "name": "discordjs-base-handler",
+  "name": "queen-v2",
   "version": "2.1.0",
-  "description": "A Discord bot handler for managing events and commands.",
+  "description": "Queen bot",
   "main": "bot.js",
   "type": "module",
   "scripts": {
     "start": "node bot.js"
   },
   "author": "Z3R0",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kabirsingh2004/discordjs-base-handler"
+    "url": "https://github.com/RayZ3R0/queen-v2"
   },
   "bugs": {
-    "url": "https://github.com/kabirsingh2004/discordjs-base-handler/issues"
+    "url": "https://github.com/RayZ3R0/queen-v2/issues"
   },
-  "homepage": "https://github.com/kabirsingh2004/discordjs-base-handler",
+  "homepage": "https://github.com/RayZ3R0/queen-v2",
   "keywords": [
     "discord",
     "bot",
