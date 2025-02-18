@@ -1,5 +1,6 @@
 import levelModel from "../schema/level.js";
 import roleSetup from "./roleSetup.js";
+import { client } from "../bot.js";
 /**
  * Adds XP to a user.
  * @param {import("discord.js").Message} message

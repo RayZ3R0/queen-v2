@@ -53,6 +53,7 @@
   ],
   "dependencies": {
     "@napi-rs/canvas": "^0.1.67",
+    "axios": "^1.7.9",
     "discord.js": "^14.17.3",
     "dotenv": "^16.4.7",
     "mongoose": "^8.10.1",

@@ -1,5 +1,5 @@
 import levelModel from "../schema/level.js";
-import lvlRoleModel from "../schema/lvlrole.js";
+import lvlRoleModel from "../schema/levelrole.js";
 
 /**
  * Assign level roles to a user based on their current level.
