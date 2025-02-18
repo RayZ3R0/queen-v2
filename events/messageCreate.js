@@ -7,11 +7,10 @@ import { client } from "../bot.js";
  */
 client.on("messageCreate", async (message) => {
   try {
-    // Check for necessary conditions
+    // Ignore bot messages or messages outside a guild context
     if (message.author.bot || !message.guild || !message.id) return;
 
     const prefix = client.config.PREFIX;
-
     const mentionPrefix = new RegExp(
       `^(<@!?${client.user.id}>|${escapeRegex(prefix)})\\s*`
     );
@@ -21,16 +20,17 @@ client.on("messageCreate", async (message) => {
     const args = message.content.slice(nPrefix.length).trim().split(/ +/);
     const cmd = args.shift().toLowerCase();
 
+    // If no command is given, show help if mentioned directly
     if (cmd.length === 0) {
       if (nPrefix.includes(client.user.id)) {
         return client.sendEmbed(
           message,
-          ` ${client.config.emoji.success} To See My All Commands Type  \`/help\` or \`${prefix}help\``
+          ` ${client.config.emoji.success} To see all my commands type \`/help\` or \`${prefix}help\``
         );
       }
     }
 
-    // Find the command
+    // Find the command by name or alias
     /**
      * @type {import("../index.js").Mcommand}
      */
@@ -40,19 +40,19 @@ client.on("messageCreate", async (message) => {
         (cmds) => cmds.aliases && cmds.aliases.includes(cmd)
       );
 
-    // Check if the command exists
     if (!command) return;
 
     const { owneronly, userPermissions, botPermissions } = command;
     const { author, member, guild } = message;
 
-    // Check ownership
+    // Check if the command is owner-only
     if (owneronly && !client.config.Owners.includes(author.id)) {
       return client.sendEmbed(
         message,
-        `This command is restricted to authorized person only.`
+        "This command is restricted to authorized persons only."
       );
     }
+
     // Check user permissions
     const missingUserPerms = userPermissions.filter(
       (perm) => !member.permissions.has(perm)
@@ -81,18 +81,32 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    // Check cooldown
-    if (cooldown(message, command)) {
+    // Check command cooldown using MongoDB
+    const cd = await cooldown(message, command);
+    if (cd) {
+      const totalSeconds = Math.floor(cd);
+      const days = Math.floor(totalSeconds / 86400);
+      const hours = Math.floor((totalSeconds % 86400) / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+
+      const timeParts = [];
+      if (days) timeParts.push(`${days} day${days !== 1 ? "s" : ""}`);
+      if (hours) timeParts.push(`${hours} hour${hours !== 1 ? "s" : ""}`);
+      if (minutes)
+        timeParts.push(`${minutes} minute${minutes !== 1 ? "s" : ""}`);
+      if (seconds)
+        timeParts.push(`${seconds} second${seconds !== 1 ? "s" : ""}`);
+
+      const timeString = timeParts.join(" ");
+
       return client.sendEmbed(
         message,
-        `You are currently on cooldown. Please wait for ${cooldown(
-          message,
-          command
-        ).toFixed()} seconds before trying again.`
+        `You are currently on cooldown. Please wait for ${timeString} before trying again.`
       );
     }
 
-    // Run the command
+    // Execute the command
     await command.run({ client, message, args, prefix });
   } catch (error) {
     console.error(

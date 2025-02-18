@@ -1,41 +1,40 @@
-import {
-  CommandInteraction,
-  Collection,
-  PermissionFlagsBits,
-} from "discord.js";
+import Cooldown from "../schema/cooldown.js";
 
 /**
- * Manages cooldown for commands.
- * @param {CommandInteraction} interaction - The command interaction.
+ * Checks and updates command cooldown in the database.
+ * @param {Object} message - The message object from Discord.
  * @param {Object} cmd - The command object containing cooldown information.
- * @returns {number | false} The time left on cooldown in seconds, or false if the command is not on cooldown.
+ * @returns {number | false} Seconds left on cooldown or false if not on cooldown.
  */
-export function cooldown(interaction, cmd) {
-  if (!interaction || !cmd) return;
-  let { client, member } = interaction;
-
-  // Ensure cooldowns collection exists for the command
-  if (!client.cooldowns.has(cmd.name)) {
-    client.cooldowns.set(cmd.name, new Collection());
-  }
+export async function cooldown(message, cmd) {
+  if (!message || !cmd) return false;
 
   const now = Date.now();
-  const timestamps = client.cooldowns.get(cmd.name);
-  const cooldownAmount = cmd.cooldown * 1000;
+  const cooldownAmount = cmd.cooldown * 1000; // cooldown in milliseconds
+  const userID = message.member.id;
 
-  if (timestamps.has(member.id)) {
-    const expirationTime = timestamps.get(member.id) + cooldownAmount;
-    if (now < expirationTime) {
-      const timeLeft = (expirationTime - now) / 1000; // Get the time left until cooldown expires
+  // Find the cooldown record for this user and command
+  let record = await Cooldown.findOne({ userID, commandName: cmd.name });
+  if (record) {
+    const lastUsed = parseInt(record.cooldown, 10);
+    // If current time is still within the cooldown window, return time left
+    if (now < lastUsed + cooldownAmount) {
+      const timeLeft = (lastUsed + cooldownAmount - now) / 1000;
       return timeLeft;
     } else {
-      timestamps.set(member.id, now);
-      setTimeout(() => timestamps.delete(member.id), cooldownAmount);
-      return false; // Command is not on cooldown
+      // Otherwise, update the timestamp and allow execution
+      record.cooldown = now.toString();
+      await record.save();
+      return false;
     }
   } else {
-    timestamps.set(member.id, now);
-    setTimeout(() => timestamps.delete(member.id), cooldownAmount);
-    return false; // Command is not on cooldown
+    // If no record exists, create one
+    record = new Cooldown({
+      userID,
+      commandName: cmd.name,
+      cooldown: now.toString(),
+    });
+    await record.save();
+    return false;
   }
 }
