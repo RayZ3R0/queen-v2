@@ -6,7 +6,7 @@ export default {
   aliases: ["ms", "myspirits"],
   description: "Check your or someone else's spirits.",
   usage: "[@user]",
-  timeout: 10,
+  cooldown: 10,
   userPermissions: [],
   botPermissions: [],
   category: "Spirits",
