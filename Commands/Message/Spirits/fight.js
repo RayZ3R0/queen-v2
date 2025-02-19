@@ -1,4 +1,4 @@
-import { EmbedBuilder } from "discord.js";
+import { EmbedBuilder, AttachmentBuilder } from "discord.js";
 import { Character, BattleEngine } from "../../../utils/BattleEngine.js";
 import profileSchema from "../../../schema/profile.js";
 import spiritSchema from "../../../schema/spirits.js";
@@ -30,14 +30,20 @@ const enemyDefaultStats = {
   abilities: ["Bash"],
 };
 
+const STARMOJI = "<:starSpin:1341872573348315136>";
+
 // Helper to return the stars string for cosmetic display in the description.
 const printStars = (starCount) => {
   const maxStars = 5;
   const displayCount = Math.min(starCount, maxStars);
   const extraStars = starCount > maxStars ? `+${starCount - maxStars}` : "";
-  return `【${"<a:starSpin:1006138461234937887>".repeat(
-    displayCount
-  )}${extraStars}】`;
+  return `【${STARMOJI.repeat(displayCount)}${extraStars}】`;
+};
+
+const SPIRIT_IMAGES = {
+  "Kurumi Tokisaki": join(__dirname, "../../../SpiritImages/kurumi.jpg"),
+  "Miku Izayoi": join(__dirname, "../../../SpiritImages/miku.jpg"),
+  "Nia Honjou": join(__dirname, "../../../SpiritImages/nia.jpg"),
 };
 
 export default {
@@ -135,6 +141,13 @@ export default {
       enemyStars
     );
 
+    const enemyAttachment = new AttachmentBuilder(SPIRIT_IMAGES[enemyName], {
+      name: "enemy.jpg",
+    });
+    const playerAttachment = new AttachmentBuilder(SPIRIT_IMAGES[playerName], {
+      name: "player.jpg",
+    });
+
     // Create a battle embed.
     // Title uses Discord usernames; description shows the spirit names with cosmetic stars.
     const battleEmbed = new EmbedBuilder()
@@ -145,11 +158,13 @@ export default {
           `**${enemyName} ${printStars(enemyStars)}**\n\n` +
           "Preparing for battle..."
       )
-      .setThumbnail("https://via.placeholder.com/150") // Replace with actual images if needed.
-      .setImage("https://via.placeholder.com/300");
+      .setThumbnail("attachment://enemy.jpg")
+      .setImage("attachment://player.jpg");
 
-    const embedMessage = await message.channel.send({ embeds: [battleEmbed] });
-
+    const embedMessage = await message.channel.send({
+      embeds: [battleEmbed],
+      files: [enemyAttachment, playerAttachment],
+    });
     // Instantiate and start the battle engine.
     const battle = new BattleEngine(
       playerCharacter,

@@ -2,13 +2,63 @@ import { EmbedBuilder } from "discord.js";
 import { promisify } from "util";
 const wait = promisify(setTimeout);
 
+// AbilityEffects mapping for easy extensibility.
+const AbilityEffects = {
+  // Zayin: stops time so that the attacker lands 2–3 extra attacks without evasion.
+  Zayin: (attacker, target) => {
+    const numSlashes = Math.floor(Math.random() * 2) + 2; // either 2 or 3
+    let totalDamage = 0;
+    let details = `${attacker.name} stops time and shoots ${numSlashes} bullets:\n`;
+    for (let i = 0; i < numSlashes; i++) {
+      // Bypass evasion for these strikes.
+      const minDamage = attacker.stats.strength * 0.5;
+      const rawDamage =
+        Math.random() * (attacker.stats.strength - minDamage) + minDamage;
+      const multiplier =
+        attacker.stats.strength /
+        (attacker.stats.strength + target.stats.defence);
+      const slashDamage = Math.max(1, Math.floor(rawDamage * multiplier));
+      target.currentHP -= slashDamage;
+      totalDamage += slashDamage;
+      details += `  Shot ${i + 1}: ${slashDamage} damage\n`;
+    }
+    details += `Total damage dealt: ${totalDamage}.`;
+    return { totalDamage, message: details };
+  },
+
+  // Solo ability: Brainwashes the target, forcing it to attack itself.
+  // The self-inflicted damage is calculated using the normal attack formula on the target's own stats with defence,
+  // then multiplied by a random factor between 2 and 3.
+  Solo: (attacker, target) => {
+    const minDamage = target.stats.strength * 0.5;
+    const rawDamage =
+      Math.random() * (target.stats.strength - minDamage) + minDamage;
+    const baseDamage = Math.max(
+      1,
+      Math.floor(
+        rawDamage *
+          (target.stats.strength /
+            (target.stats.strength + target.stats.defence))
+      )
+    );
+    const factor = 2 + Math.random(); // Random factor between 2 and 3.
+    const damage = Math.floor(baseDamage * factor);
+    target.currentHP -= damage;
+    const message =
+      `${attacker.name} performs Solo, brainwashing ${target.name}!\n` +
+      `${target.name} is forced to attack herself for ${damage} damage.`;
+    return { totalDamage: damage, message };
+  },
+};
+
+const STARMOJI = "<:starSpin:1341872573348315136>";
+
+// Helper to return the stars string for cosmetic display in the description.
 const printStars = (starCount) => {
   const maxStars = 5;
   const displayCount = Math.min(starCount, maxStars);
   const extraStars = starCount > maxStars ? `+${starCount - maxStars}` : "";
-  return `【${"<a:starSpin:1006138461234937887>".repeat(
-    displayCount
-  )}${extraStars}】`;
+  return `【${STARMOJI.repeat(displayCount)}${extraStars}】`;
 };
 
 export class Character {
@@ -22,13 +72,12 @@ export class Character {
     this.stars = stars;
   }
 
-  // Revised evasion system: chance to evade is scaled down for rarity.
+  // Revised evasion system: chance to evade is based solely on agility.
   attack(target) {
     // Evasion Check:
     const totalAgility = this.stats.agility + target.stats.agility;
-    // Original evasion would be target.stats.agility / totalAgility.
-    // We'll reduce it by applying a reduction factor.
-    const reductionFactor = 0.4; // Lower factor makes evasion rarer.
+    // Use a reduced factor so evasion is rare.
+    const reductionFactor = 0.2;
     const evadeChance = (target.stats.agility / totalAgility) * reductionFactor;
     if (Math.random() < evadeChance) {
       // Attack is evaded.
@@ -38,10 +87,8 @@ export class Character {
     const minDamage = this.stats.strength * 0.5;
     const rawDamage =
       Math.random() * (this.stats.strength - minDamage) + minDamage;
-    // A multiplier based on the ratio of attacker's strength to the combined strength and target's defence.
     const multiplier =
       this.stats.strength / (this.stats.strength + target.stats.defence);
-    // Final damage, ensuring at least a minimum of 1 damage.
     const damage = Math.max(1, Math.floor(rawDamage * multiplier));
     target.currentHP -= damage;
     return damage;
@@ -49,6 +96,10 @@ export class Character {
 
   useAbility(abilityName, target) {
     console.log(`${this.name} uses ${abilityName}!`);
+    if (AbilityEffects.hasOwnProperty(abilityName)) {
+      return AbilityEffects[abilityName](this, target);
+    }
+    // Fallback: if no special effect is defined, simply perform a normal attack.
     return this.attack(target);
   }
 }
@@ -109,13 +160,15 @@ Energy: ${this.enemy.energy}/100
       this.round < 25
     ) {
       let actionMessage = "";
-      // Player's Turn
       let dmg;
+      // Player's Turn:
       if (this.player.energy >= 100) {
         this.player.energy -= 100;
         const ability = this.player.abilities[0] || "Attack";
         dmg = this.player.useAbility(ability, this.enemy);
-        if (dmg === -1) {
+        if (typeof dmg === "object") {
+          actionMessage = `**${this.player.name}** activated **${ability}**:\n${dmg.message}`;
+        } else if (dmg === -1) {
           actionMessage = `**${this.enemy.name}** evaded **${this.player.name}**’s **${ability}**!`;
         } else {
           actionMessage = `**${this.player.name}** used **${ability}** and dealt **${dmg}** damage!`;
@@ -133,12 +186,14 @@ Energy: ${this.enemy.energy}/100
 
       if (this.enemy.currentHP <= 0) break;
 
-      // Enemy's Turn
+      // Enemy's Turn:
       if (this.enemy.energy >= 100) {
         this.enemy.energy -= 100;
         const ability = this.enemy.abilities[0] || "Attack";
         dmg = this.enemy.useAbility(ability, this.player);
-        if (dmg === -1) {
+        if (typeof dmg === "object") {
+          actionMessage = `**${this.enemy.name}** activated **${ability}**:\n${dmg.message}`;
+        } else if (dmg === -1) {
           actionMessage = `**${this.player.name}** evaded **${this.enemy.name}**’s **${ability}**!`;
         } else {
           actionMessage = `**${this.enemy.name}** used **${ability}** and dealt **${dmg}** damage!`;
