@@ -2,6 +2,8 @@ import { promisify } from "util";
 import { AbilityEffects, normalAttackDamage } from "./abilities.js";
 const wait = promisify(setTimeout);
 
+const WAIT_TIME = 3500;
+
 /* --- Utility for Cosmetic Output --- */
 const STARMOJI = "<a:1006138461234937887:1342052087084613702>";
 const printStars = (starCount) => {
@@ -106,7 +108,7 @@ Energy: ${this.enemy.energy}/100`
         ? `Coin flip: **${this.player.name}** goes first!`
         : `Coin flip: **${this.enemy.name}** goes first!`;
     this.updateEmbed(`Battle Start!\n${initMsg}`);
-    await wait(2000);
+    await wait(WAIT_TIME);
 
     while (
       this.player.currentHP > 0 &&
@@ -121,7 +123,7 @@ Energy: ${this.enemy.energy}/100`
         // Player's turn first.
         actionMessage += await this.takeTurn(this.player, this.enemy);
         this.updateEmbed(actionMessage);
-        await wait(2000);
+        await wait(WAIT_TIME);
         if (this.enemy.currentHP <= 0) break;
         // Then enemy's turn.
         actionMessage = await this.takeTurn(this.enemy, this.player);
@@ -129,20 +131,20 @@ Energy: ${this.enemy.energy}/100`
         // Enemy goes first.
         actionMessage += await this.takeTurn(this.enemy, this.player);
         this.updateEmbed(actionMessage);
-        await wait(2000);
+        await wait(WAIT_TIME);
         if (this.player.currentHP <= 0) break;
         // Then player's turn.
         actionMessage = await this.takeTurn(this.player, this.enemy);
       }
       this.updateEmbed(actionMessage);
-      await wait(2000);
+      await wait(WAIT_TIME);
 
       // End-of-round energy buildup.
       this.player.energy += 25;
       this.enemy.energy += 25;
       this.round++;
       this.updateEmbed(`End of Round ${this.round - 1}`);
-      await wait(2000);
+      await wait(WAIT_TIME);
     }
 
     const winner =
