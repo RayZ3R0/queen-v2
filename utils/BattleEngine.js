@@ -8,7 +8,7 @@ const AbilityEffects = {
   Zayin: (attacker, target) => {
     const numSlashes = Math.floor(Math.random() * 2) + 2; // either 2 or 3
     let totalDamage = 0;
-    let details = `${attacker.name} stops time and shoots ${numSlashes} bullets:\n`;
+    let details = `**${attacker.name}** stops time and shoots **${numSlashes}** bullets:\n`;
     for (let i = 0; i < numSlashes; i++) {
       // Bypass evasion for these strikes.
       const minDamage = attacker.stats.strength * 0.5;
@@ -20,9 +20,9 @@ const AbilityEffects = {
       const slashDamage = Math.max(1, Math.floor(rawDamage * multiplier));
       target.currentHP -= slashDamage;
       totalDamage += slashDamage;
-      details += `  Shot ${i + 1}: ${slashDamage} damage\n`;
+      details += `- **Shot ${i + 1}:** \`${slashDamage}\` damage\n`;
     }
-    details += `Total damage dealt: ${totalDamage}.`;
+    details += `\n**Total damage dealt:** \`${totalDamage}\``;
     return { totalDamage, message: details };
   },
 
@@ -45,9 +45,68 @@ const AbilityEffects = {
     const damage = Math.floor(baseDamage * factor);
     target.currentHP -= damage;
     const message =
-      `${attacker.name} performs Solo, brainwashing ${target.name}!\n` +
-      `${target.name} is forced to attack herself for ${damage} damage.`;
+      `**${attacker.name}** performs **Solo**, brainwashing **${target.name}**!\n` +
+      `\n*${target.name} is forced to attack herself for **${damage}** damage.*`;
     return { totalDamage: damage, message };
+  },
+  Dalet: (attacker, _target) => {
+    // Make sure the attacker is alive.
+    if (attacker.currentHP <= 0)
+      return {
+        totalDamage: 0,
+        message: `${attacker.name} is already defeated!`,
+      };
+
+    // Base healing is a percentage of maximum HP between 15% and 25%.
+    const healPercent = 0.15 + Math.random() * 0.1; // 15% to 25%
+    // Kurumi gets a 10% bonus; others receive no bonus.
+    const bonusMultiplier = attacker.name === "Kurumi Tokisaki" ? 1.1 : 1;
+    const healAmount = Math.floor(
+      attacker.stats.hp * healPercent * bonusMultiplier
+    );
+
+    // Apply the healing without exceeding the max HP.
+    const previousHP = attacker.currentHP;
+    attacker.currentHP = Math.min(
+      attacker.stats.hp,
+      attacker.currentHP + healAmount
+    );
+    const actualHealed = attacker.currentHP - previousHP;
+
+    const message = `**${attacker.name}** uses **Dalet** and rewinds time, healing for **${actualHealed}** HP!`;
+    // Return negative damage to indicate healing.
+    return { totalDamage: -actualHealed, message };
+  },
+  Fantasia: (attacker, _target) => {
+    // Make sure the attacker is alive.
+    if (attacker.currentHP <= 0) {
+      return {
+        totalDamage: 0,
+        message: `${attacker.name} is already defeated!`,
+      };
+    }
+
+    // Heal between 10% and 20% of maximum HP.
+    const healPercent = 0.1 + Math.random() * 0.1; // 10% to 20%
+    const healAmount = Math.floor(attacker.stats.hp * healPercent);
+    const previousHP = attacker.currentHP;
+    attacker.currentHP = Math.min(
+      attacker.stats.hp,
+      attacker.currentHP + healAmount
+    );
+    const actualHealed = attacker.currentHP - previousHP;
+
+    // Increase strength permanently by 5% to 10% of current strength.
+    const boostPercent = 0.05 + Math.random() * 0.05; // 5% to 10%
+    const boostAmount = Math.floor(attacker.stats.strength * boostPercent);
+    attacker.stats.strength += boostAmount;
+
+    const message =
+      `**${attacker.name}** uses **Fantasia** – a cascade of Gabriel's songs sung all at once!\n\n` +
+      `*She heals for **${actualHealed}** HP and permanently increases her strength by **${boostAmount}** points!*`;
+
+    // Return negative healing as damage indicator.
+    return { totalDamage: -actualHealed, message };
   },
 };
 
@@ -164,7 +223,12 @@ Energy: ${this.enemy.energy}/100
       // Player's Turn:
       if (this.player.energy >= 100) {
         this.player.energy -= 100;
-        const ability = this.player.abilities[0] || "Attack";
+        const ability =
+          this.player.abilities.length > 0
+            ? this.player.abilities[
+                Math.floor(Math.random() * this.player.abilities.length)
+              ]
+            : "Attack";
         dmg = this.player.useAbility(ability, this.enemy);
         if (typeof dmg === "object") {
           actionMessage = `**${this.player.name}** activated **${ability}**:\n${dmg.message}`;
@@ -189,7 +253,11 @@ Energy: ${this.enemy.energy}/100
       // Enemy's Turn:
       if (this.enemy.energy >= 100) {
         this.enemy.energy -= 100;
-        const ability = this.enemy.abilities[0] || "Attack";
+        const ability = this.enemy.abilities.length
+          ? this.enemy.abilities[
+              Math.floor(Math.random() * this.enemy.abilities.length)
+            ]
+          : "Attack";
         dmg = this.enemy.useAbility(ability, this.player);
         if (typeof dmg === "object") {
           actionMessage = `**${this.enemy.name}** activated **${ability}**:\n${dmg.message}`;
