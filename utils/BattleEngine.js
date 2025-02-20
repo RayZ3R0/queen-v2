@@ -1,129 +1,9 @@
-import { EmbedBuilder } from "discord.js";
 import { promisify } from "util";
+import { AbilityEffects, normalAttackDamage } from "./abilities.js";
 const wait = promisify(setTimeout);
 
-// AbilityEffects mapping for easy extensibility.
-const AbilityEffects = {
-  // Zayin: stops time so that the attacker lands 2–3 extra attacks without evasion.
-  Zayin: (attacker, target) => {
-    const numSlashes = Math.floor(Math.random() * 2) + 2; // either 2 or 3
-    let totalDamage = 0;
-    let details = `**${attacker.name}** stops time and shoots **${numSlashes}** bullets:\n`;
-    for (let i = 0; i < numSlashes; i++) {
-      // Bypass evasion for these strikes.
-      const minDamage = attacker.stats.strength * 0.5;
-      const rawDamage =
-        Math.random() * (attacker.stats.strength - minDamage) + minDamage;
-      const multiplier =
-        attacker.stats.strength /
-        (attacker.stats.strength + target.stats.defence);
-      const slashDamage = Math.max(1, Math.floor(rawDamage * multiplier));
-      target.currentHP -= slashDamage;
-      totalDamage += slashDamage;
-      details += `- **Shot ${i + 1}:** \`${slashDamage}\` damage\n`;
-    }
-    details += `\n**Total damage dealt:** \`${totalDamage}\``;
-    return { totalDamage, message: details };
-  },
-
-  // Solo ability: Brainwashes the target, forcing it to attack itself.
-  // The self-inflicted damage is calculated using the normal attack formula on the target's own stats with defence,
-  // then multiplied by a random factor between 2 and 3.
-  Solo: (attacker, target) => {
-    const minDamage = target.stats.strength * 0.5;
-    const rawDamage =
-      Math.random() * (target.stats.strength - minDamage) + minDamage;
-    const baseDamage = Math.max(
-      1,
-      Math.floor(
-        rawDamage *
-          (target.stats.strength /
-            (target.stats.strength + target.stats.defence))
-      )
-    );
-    const factor = 2 + Math.random(); // Random factor between 2 and 3.
-    const damage = Math.floor(baseDamage * factor);
-    target.currentHP -= damage;
-    const message =
-      `**${attacker.name}** performs **Solo**, brainwashing **${target.name}**!\n` +
-      `\n*${target.name} is forced to attack herself for **${damage}** damage.*`;
-    return { totalDamage: damage, message };
-  },
-  Dalet: (attacker, _target) => {
-    // Make sure the attacker is alive.
-    if (attacker.currentHP <= 0)
-      return {
-        totalDamage: 0,
-        message: `${attacker.name} is already defeated!`,
-      };
-
-    // Base healing is a percentage of maximum HP between 15% and 25%.
-    const healPercent = 0.15 + Math.random() * 0.1; // 15% to 25%
-    // Kurumi gets a 10% bonus; others receive no bonus.
-    const bonusMultiplier = attacker.name === "Kurumi Tokisaki" ? 1.1 : 1;
-    const healAmount = Math.floor(
-      attacker.stats.hp * healPercent * bonusMultiplier
-    );
-
-    // Apply the healing without exceeding the max HP.
-    const previousHP = attacker.currentHP;
-    attacker.currentHP = Math.min(
-      attacker.stats.hp,
-      attacker.currentHP + healAmount
-    );
-    const actualHealed = attacker.currentHP - previousHP;
-
-    const message = `**${attacker.name}** uses **Dalet** and rewinds time, healing for **${actualHealed}** HP!`;
-    // Return negative damage to indicate healing.
-    return { totalDamage: -actualHealed, message };
-  },
-  Fantasia: (attacker, _target) => {
-    // Make sure the attacker is alive.
-    if (attacker.currentHP <= 0) {
-      return {
-        totalDamage: 0,
-        message: `${attacker.name} is already defeated!`,
-      };
-    }
-
-    // Heal between 10% and 20% of maximum HP.
-    const healPercent = 0.1 + Math.random() * 0.1; // 10% to 20%
-    const healAmount = Math.floor(attacker.stats.hp * healPercent);
-    const previousHP = attacker.currentHP;
-    attacker.currentHP = Math.min(
-      attacker.stats.hp,
-      attacker.currentHP + healAmount
-    );
-    const actualHealed = attacker.currentHP - previousHP;
-
-    // Increase strength permanently by 5% to 10% of current strength.
-    const boostPercent = 0.05 + Math.random() * 0.05; // 5% to 10%
-    const boostAmount = Math.floor(attacker.stats.strength * boostPercent);
-    attacker.stats.strength += boostAmount;
-
-    const message =
-      `**${attacker.name}** uses **Fantasia** – a cascade of Gabriel's songs sung all at once!\n\n` +
-      `*She heals for **${actualHealed}** HP and permanently increases her strength by **${boostAmount}** points!*`;
-
-    // Return negative healing as damage indicator.
-    return { totalDamage: -actualHealed, message };
-  },
-  // Future Entry: Nia rewrites the future—forcing the opponent to miss their attack turns.
-  FutureEntry: (attacker, target) => {
-    // Calculate stun duration: randomly 1 or 2 turns.
-    const stunTurns = Math.floor(Math.random() * 2) + 2;
-    // Set or add to the target’s stun counter.
-    target.stunTurns = (target.stunTurns || 0) + stunTurns;
-    const message =
-      `**${attacker.name}** uses **Future Entry (未来記載)**, rewriting destiny on <Rasiel>'s blank pages!\n` +
-      `**${target.name}** will miss their attacks for **${stunTurns}** turn(s)!`;
-    return { totalDamage: 0, message };
-  },
-};
-
+/* --- Utility for Cosmetic Output --- */
 const STARMOJI = "<a:1006138461234937887:1342052087084613702>";
-
-// Helper to return the stars string for cosmetic display in the description.
 const printStars = (starCount) => {
   const maxStars = 5;
   const displayCount = Math.min(starCount, maxStars);
@@ -131,6 +11,7 @@ const printStars = (starCount) => {
   return `【${STARMOJI.repeat(displayCount)}${extraStars}】`;
 };
 
+/* --- Character Class --- */
 export class Character {
   constructor(name, stats, abilities, user, stars) {
     this.name = name;
@@ -143,24 +24,16 @@ export class Character {
     this.stunTurns = 0;
   }
 
-  // Revised evasion system: chance to evade is based solely on agility.
+  // Revised attack using normalAttackDamage.
   attack(target) {
-    // Evasion Check:
     const totalAgility = this.stats.agility + target.stats.agility;
-    // Use a reduced factor so evasion is rare.
     const reductionFactor = 0.2;
     const evadeChance = (target.stats.agility / totalAgility) * reductionFactor;
-    if (Math.random() < evadeChance) {
-      // Attack is evaded.
-      return -1;
-    }
-    // Calculate a base damage between 50% and 100% of strength.
-    const minDamage = this.stats.strength * 0.5;
-    const rawDamage =
-      Math.random() * (this.stats.strength - minDamage) + minDamage;
-    const multiplier =
-      this.stats.strength / (this.stats.strength + target.stats.defence);
-    const damage = Math.max(1, Math.floor(rawDamage * multiplier));
+    if (Math.random() < evadeChance) return -1;
+    const damage = normalAttackDamage(
+      this.stats.strength,
+      target.stats.defence
+    );
     target.currentHP -= damage;
     return damage;
   }
@@ -170,11 +43,11 @@ export class Character {
     if (AbilityEffects.hasOwnProperty(abilityName)) {
       return AbilityEffects[abilityName](this, target);
     }
-    // Fallback: if no special effect is defined, simply perform a normal attack.
     return this.attack(target);
   }
 }
 
+/* --- BattleEngine Class --- */
 export class BattleEngine {
   constructor(player, enemy, embed, message) {
     this.player = player;
@@ -182,22 +55,28 @@ export class BattleEngine {
     this.embed = embed;
     this.message = message;
     this.round = 1;
+    // Decide initiative based on a coin flip with slight agility bias.
+    const totalAgility = this.player.stats.agility + this.enemy.stats.agility;
+    // Bias factor scaled to 10% maximum influence.
+    const bias =
+      ((this.player.stats.agility - this.enemy.stats.agility) / totalAgility) *
+      0.1;
+    const playerFirstChance = 0.5 + bias; // base 50% adjusted by bias
+    this.initiative = Math.random() < playerFirstChance ? "player" : "enemy";
   }
 
   progressBar(current, max, size = 10) {
-    const fillBar = "█";
-    const emptyBar = "░";
-    const safeCurrent = Math.max(0, current);
-    let fill = Math.round((size * safeCurrent) / (max || 1));
-    if (fill > size) fill = size;
-    return fillBar.repeat(fill) + emptyBar.repeat(size - fill);
+    const fill = Math.min(
+      size,
+      Math.round((size * Math.max(0, current)) / (max || 1))
+    );
+    return "█".repeat(fill) + "░".repeat(size - fill);
   }
 
   updateEmbed(actionDetails = "") {
     this.embed
       .setDescription(
-        `
-${actionDetails ? `${actionDetails}\n\n` : ""}
+        `${actionDetails ? `${actionDetails}\n\n` : ""}
 **Battle Status:**
 
 **${this.player.user.username}’s ${this.player.name}** ${printStars(
@@ -214,15 +93,19 @@ Energy: ${this.player.energy}/100
 HP: ${Math.max(0, this.enemy.currentHP)}/${
           this.enemy.stats.hp
         } ${this.progressBar(this.enemy.currentHP, this.enemy.stats.hp)}
-Energy: ${this.enemy.energy}/100
-                `
+Energy: ${this.enemy.energy}/100`
       )
       .setFooter({ text: `Round ${this.round}` });
     this.message.edit({ embeds: [this.embed] });
   }
 
   async start() {
-    this.updateEmbed("Battle Start!");
+    // Announce initiative result.
+    const initMsg =
+      this.initiative === "player"
+        ? `Coin flip: **${this.player.name}** goes first!`
+        : `Coin flip: **${this.enemy.name}** goes first!`;
+    this.updateEmbed(`Battle Start!\n${initMsg}`);
     await wait(2000);
 
     while (
@@ -233,65 +116,23 @@ Energy: ${this.enemy.energy}/100
       let actionMessage = "";
       let dmg;
 
-      // Player's Turn: Check if player is stunned.
-      if (this.player.stunTurns > 0) {
-        actionMessage = `Due to Future Entry, **${this.player.name}** misses their turn!`;
-        this.player.stunTurns--;
-      } else if (this.player.energy >= 100) {
-        this.player.energy -= 100;
-        const ability =
-          this.player.abilities.length > 0
-            ? this.player.abilities[
-                Math.floor(Math.random() * this.player.abilities.length)
-              ]
-            : "Attack";
-        dmg = this.player.useAbility(ability, this.enemy);
-        if (typeof dmg === "object") {
-          actionMessage = `**${this.player.name}** activated **${ability}**:\n${dmg.message}`;
-        } else if (dmg === -1) {
-          actionMessage = `**${this.enemy.name}** evaded **${this.player.name}**’s **${ability}**!`;
-        } else {
-          actionMessage = `**${this.player.name}** used **${ability}** and dealt **${dmg}** damage!`;
-        }
+      // Determine turn order based on initiative.
+      if (this.initiative === "player") {
+        // Player's turn first.
+        actionMessage += await this.takeTurn(this.player, this.enemy);
+        this.updateEmbed(actionMessage);
+        await wait(2000);
+        if (this.enemy.currentHP <= 0) break;
+        // Then enemy's turn.
+        actionMessage = await this.takeTurn(this.enemy, this.player);
       } else {
-        dmg = this.player.attack(this.enemy);
-        if (dmg === -1) {
-          actionMessage = `**${this.enemy.name}** evaded **${this.player.name}**’s attack!`;
-        } else {
-          actionMessage = `**${this.player.name}** attacked and dealt **${dmg}** damage!`;
-        }
-      }
-      this.updateEmbed(actionMessage);
-      await wait(2000);
-
-      if (this.enemy.currentHP <= 0) break;
-
-      // Enemy's Turn: Check if enemy is stunned.
-      if (this.enemy.stunTurns > 0) {
-        actionMessage = `Due to Future Entry, **${this.enemy.name}** misses their turn!`;
-        this.enemy.stunTurns--;
-      } else if (this.enemy.energy >= 100) {
-        this.enemy.energy -= 100;
-        const ability = this.enemy.abilities.length
-          ? this.enemy.abilities[
-              Math.floor(Math.random() * this.enemy.abilities.length)
-            ]
-          : "Attack";
-        dmg = this.enemy.useAbility(ability, this.player);
-        if (typeof dmg === "object") {
-          actionMessage = `**${this.enemy.name}** activated **${ability}**:\n${dmg.message}`;
-        } else if (dmg === -1) {
-          actionMessage = `**${this.player.name}** evaded **${this.enemy.name}**’s **${ability}**!`;
-        } else {
-          actionMessage = `**${this.enemy.name}** used **${ability}** and dealt **${dmg}** damage!`;
-        }
-      } else {
-        dmg = this.enemy.attack(this.player);
-        if (dmg === -1) {
-          actionMessage = `**${this.player.name}** evaded **${this.enemy.name}**’s attack!`;
-        } else {
-          actionMessage = `**${this.enemy.name}** attacked and dealt **${dmg}** damage!`;
-        }
+        // Enemy goes first.
+        actionMessage += await this.takeTurn(this.enemy, this.player);
+        this.updateEmbed(actionMessage);
+        await wait(2000);
+        if (this.player.currentHP <= 0) break;
+        // Then player's turn.
+        actionMessage = await this.takeTurn(this.player, this.enemy);
       }
       this.updateEmbed(actionMessage);
       await wait(2000);
@@ -307,5 +148,36 @@ Energy: ${this.enemy.energy}/100
     const winner =
       this.player.currentHP > this.enemy.currentHP ? this.player : this.enemy;
     this.message.channel.send(`**${winner.name} wins the battle!**`);
+  }
+
+  // Encapsulate turn-taking for modularity.
+  async takeTurn(actor, target) {
+    let msg = "";
+    let dmg;
+    if (actor.stunTurns > 0) {
+      msg = `Due to Future Entry, **${actor.name}** misses their turn!`;
+      actor.stunTurns--;
+    } else if (actor.energy >= 100) {
+      actor.energy -= 100;
+      const ability =
+        actor.abilities.length > 0
+          ? actor.abilities[Math.floor(Math.random() * actor.abilities.length)]
+          : "Attack";
+      dmg = actor.useAbility(ability, target);
+      if (typeof dmg === "object") {
+        msg = `**${actor.name}** activated **${ability}**:\n${dmg.message}`;
+      } else if (dmg === -1) {
+        msg = `**${target.name}** evaded **${actor.name}**’s **${ability}**!`;
+      } else {
+        msg = `**${actor.name}** used **${ability}** and dealt **${dmg}** damage!`;
+      }
+    } else {
+      dmg = actor.attack(target);
+      msg =
+        dmg === -1
+          ? `**${target.name}** evaded **${actor.name}**’s attack!`
+          : `**${actor.name}** attacked and dealt **${dmg}** damage!`;
+    }
+    return msg;
   }
 }
