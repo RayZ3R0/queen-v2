@@ -139,6 +139,7 @@ export const AbilityEffects = {
   FutureEntry: (attacker, target) => {
     // Determine a random number of turns to stun (2 or 3)
     const stunTurns = Math.floor(getRandom(2, 4));
+    target.stunMessage = `Due to Future Entry, **${target.name}** misses their attack!`;
     // Add the stun turns to the target's stun counter (initializing if necessary)
     target.stunTurns = (target.stunTurns || 0) + stunTurns;
     const message =
@@ -146,5 +147,57 @@ export const AbilityEffects = {
       `**${target.name}** will miss their attacks for **${stunTurns}** turn(s)!`;
     // Return the stun effect with no damage and the descriptive message
     return { totalDamage: 0, message };
+  },
+  // Ratelibish (Armor Mode): Tohka activates a mode where her armor nullifies the opponent’s attacks
+  // for 2–3 turns by adding to their stun count, and she gains a temporary boost to her strength for 2 turns.
+  // This ability can only be used once per battle; if used again, it falls back to a normal attack.
+  Ratelibish: (attacker, target) => {
+    // If already used, fall back to a normal attack.
+    if (attacker.armorModeUsed) {
+      return attacker.attack(target);
+    }
+    // Mark that this ability has been used.
+    attacker.armorModeUsed = true;
+
+    // Nullify opponent's attacks: stun for 2 or 3 turns.
+    const stunTurns = Math.floor(getRandom(2, 4)); // yields 2 or 3
+    target.stunTurns = (target.stunTurns || 0) + stunTurns;
+    // Set a custom stun message for this effect.
+    target.stunMessage = `Due to Armor Mode: Ratelibish, **${target.name}**'s attack gets **nullified**!`;
+
+    // Calculate a temporary attack boost: 20–30% of current strength.
+    const boostPercent = 0.2 + Math.random() * 0.1;
+    const boostAmount = Math.floor(attacker.stats.strength * boostPercent);
+    attacker.tempBoost = (attacker.tempBoost || 0) + boostAmount;
+    attacker.boostTurns = 2; // lasts for 2 turns
+
+    const message =
+      `**${attacker.name}** activates **Armor Mode: Ratelibish (装)**!\n` +
+      `Her armor nullifies **${target.name}**'s attacks for **${stunTurns}** turn(s) and boosts her strength by **${boostAmount}** points for 2 turns.`;
+    return { totalDamage: 0, message };
+  },
+  // Halvanhelev (Final Sword): Tohka unleashes her true Angel form.
+  // The ability calculates a base damage using the normal attack formula and then
+  // applies a damage multiplier between 2.2 and 2.8. This extra burst represents the
+  // massive destructive power of her fused sword. Only Tohka can use this ability.
+  Halvanhelev: (attacker, target) => {
+    // If the attacker is not Tohka, fall back to a normal attack.
+    if (attacker.name !== "Tohka Yatogami") {
+      return attacker.attack(target);
+    }
+    // Calculate base damage using normalAttackDamage.
+    const baseDamage = normalAttackDamage(
+      attacker.stats.strength,
+      target.stats.defence
+    );
+    // Choose a multiplier between 2.2 and 2.8 (balanced so it's strong but not overwhelming)
+    const multiplier = 2.2 + Math.random() * 0.6;
+    const damage = Math.max(1, Math.floor(baseDamage * multiplier));
+    // Apply the damage to the target.
+    target.currentHP -= damage;
+    const message =
+      `**${attacker.name}** unleashes **Halvanhelev: Final Sword**!\n` +
+      `With a massive swing of her fused sword, she slashes **${target.name}** for **${damage}** damage!`;
+    return { totalDamage: damage, message };
   },
 };
