@@ -108,9 +108,20 @@ const AbilityEffects = {
     // Return negative healing as damage indicator.
     return { totalDamage: -actualHealed, message };
   },
+  // Future Entry: Nia rewrites the future—forcing the opponent to miss their attack turns.
+  FutureEntry: (attacker, target) => {
+    // Calculate stun duration: randomly 1 or 2 turns.
+    const stunTurns = Math.floor(Math.random() * 2) + 2;
+    // Set or add to the target’s stun counter.
+    target.stunTurns = (target.stunTurns || 0) + stunTurns;
+    const message =
+      `**${attacker.name}** uses **Future Entry (未来記載)**, rewriting destiny on <Rasiel>'s blank pages!\n` +
+      `**${target.name}** will miss their attacks for **${stunTurns}** turn(s)!`;
+    return { totalDamage: 0, message };
+  },
 };
 
-const STARMOJI = "<:starSpin:1341872573348315136>";
+const STARMOJI = "<a:1006138461234937887:1342052087084613702>";
 
 // Helper to return the stars string for cosmetic display in the description.
 const printStars = (starCount) => {
@@ -129,6 +140,7 @@ export class Character {
     this.user = user;
     this.energy = 0;
     this.stars = stars;
+    this.stunTurns = 0;
   }
 
   // Revised evasion system: chance to evade is based solely on agility.
@@ -220,8 +232,12 @@ Energy: ${this.enemy.energy}/100
     ) {
       let actionMessage = "";
       let dmg;
-      // Player's Turn:
-      if (this.player.energy >= 100) {
+
+      // Player's Turn: Check if player is stunned.
+      if (this.player.stunTurns > 0) {
+        actionMessage = `Due to Future Entry, **${this.player.name}** misses their turn!`;
+        this.player.stunTurns--;
+      } else if (this.player.energy >= 100) {
         this.player.energy -= 100;
         const ability =
           this.player.abilities.length > 0
@@ -250,8 +266,11 @@ Energy: ${this.enemy.energy}/100
 
       if (this.enemy.currentHP <= 0) break;
 
-      // Enemy's Turn:
-      if (this.enemy.energy >= 100) {
+      // Enemy's Turn: Check if enemy is stunned.
+      if (this.enemy.stunTurns > 0) {
+        actionMessage = `Due to Future Entry, **${this.enemy.name}** misses their turn!`;
+        this.enemy.stunTurns--;
+      } else if (this.enemy.energy >= 100) {
         this.enemy.energy -= 100;
         const ability = this.enemy.abilities.length
           ? this.enemy.abilities[

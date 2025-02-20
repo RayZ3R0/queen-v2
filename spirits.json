@@ -81,10 +81,10 @@
   },
   "Nia Honjou": {
     "hp": 1050,
-    "strength": 140,
+    "strength": 160,
     "defence": 140,
     "agility": 140,
-    "abilities": ["Healer", "Booster"],
+    "abilities": ["FutureEntry"],
     "quotes": "—Isn't it your job to make the Spirits fall for you, boy? No... It’s not that simple."
   },
   "Mio Takamiya (Spirit of Origin)": {
