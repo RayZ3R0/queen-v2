@@ -160,13 +160,13 @@ export const AbilityEffects = {
     attacker.armorModeUsed = true;
 
     // Nullify opponent's attacks: stun for 2 or 3 turns.
-    const stunTurns = Math.floor(getRandom(2, 4)); // yields 2 or 3
+    const stunTurns = Math.floor(getRandom(1, 3)); // yields 2 or 3
     target.stunTurns = (target.stunTurns || 0) + stunTurns;
     // Set a custom stun message for this effect.
     target.stunMessage = `Due to Armor Mode: Ratelibish, **${target.name}**'s attack gets **nullified**!`;
 
-    // Calculate a temporary attack boost: 20–30% of current strength.
-    const boostPercent = 0.2 + Math.random() * 0.1;
+    // Calculate a temporary attack boost: 10–20% of current strength.
+    const boostPercent = 0.1 + Math.random() * 0.1;
     const boostAmount = Math.floor(attacker.stats.strength * boostPercent);
     attacker.tempBoost = (attacker.tempBoost || 0) + boostAmount;
     attacker.boostTurns = 2; // lasts for 2 turns
@@ -190,8 +190,8 @@ export const AbilityEffects = {
       attacker.stats.strength,
       target.stats.defence
     );
-    // Choose a multiplier between 2.2 and 2.8 (balanced so it's strong but not overwhelming)
-    const multiplier = 2.2 + Math.random() * 0.6;
+    // Choose a multiplier between 1.4 and 2 (balanced so it's strong but not overwhelming)
+    const multiplier = 1.4 + Math.random() * 0.6;
     const damage = Math.max(1, Math.floor(baseDamage * multiplier));
     // Apply the damage to the target.
     target.currentHP -= damage;
@@ -199,5 +199,54 @@ export const AbilityEffects = {
       `**${attacker.name}** unleashes **Halvanhelev: Final Sword**!\n` +
       `With a massive swing of her fused sword, she slashes **${target.name}** for **${damage}** damage!`;
     return { totalDamage: damage, message };
+  },
+  // Artelif (Crown Cannon): Origami gathers her cannons into a crown and unleashes a massive beam.
+  // The damage is calculated by multiplying a normal attack’s damage by a factor between 3.0 and 3.5.
+  // In addition, there is a 25% chance to stun the target for 1 turn.
+  Artelif: (attacker, target) => {
+    // Compute base damage and apply a heavy multiplier.
+    const baseDamage = normalAttackDamage(
+      attacker.stats.strength,
+      target.stats.defence
+    );
+    const multiplier = 1.2 + Math.random() * 0.5; // multiplier between 1.2 and 1.7
+    const damage = Math.max(1, Math.floor(baseDamage * multiplier));
+    target.currentHP -= damage;
+
+    // 75% chance to stun the target for 1 turn.
+    let extraEffect = "";
+    if (Math.random() < 0.75) {
+      target.stunTurns = (target.stunTurns || 0) + 1;
+      extraEffect = `\n**${target.name}** is stunned for 1 turn by the overwhelming burst of light!`;
+    }
+
+    const message =
+      `**${attacker.name}** activates **Artelif: Crown Cannon**!\n` +
+      `A brilliant beam of concentrated light slams into **${target.name}** for **${damage}** damage!` +
+      extraEffect;
+    return { totalDamage: damage, message };
+  },
+
+  // Metatron’s Aegis (Radiant Barrier): Origami forms a radiant shield that heals her and reflects damage.
+  // The ability heals Origami by 15% of her maximum HP and reflects 30% of that value as damage to the target.
+  Aegis: (attacker, target) => {
+    // Calculate shield amount based on 15% of maximum HP.
+    const shieldAmount = Math.floor(attacker.stats.hp * 0.15);
+    // Heal Origami by the shield amount, not exceeding her max HP.
+    const previousHP = attacker.currentHP;
+    attacker.currentHP = Math.min(
+      attacker.stats.hp,
+      attacker.currentHP + shieldAmount
+    );
+    const actualHealed = attacker.currentHP - previousHP;
+    // Reflect 30% of the shield value as damage to the target.
+    const reflectDamage = Math.max(1, Math.floor(shieldAmount * 0.3));
+    target.currentHP -= reflectDamage;
+
+    const message =
+      `**${attacker.name}** invokes **Metatron’s Aegis: Radiant Barrier**!\n` +
+      `A shimmering shield of light envelops her, adding a shield worth **${actualHealed}** HP and reflecting **${reflectDamage}** damage back to **${target.name}**.`;
+    // Note: This ability serves a defensive counter and does not deal "attack" damage directly.
+    return { totalDamage: reflectDamage, message };
   },
 };

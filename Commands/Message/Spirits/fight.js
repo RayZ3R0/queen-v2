@@ -45,6 +45,7 @@ const SPIRIT_IMAGES = {
   "Miku Izayoi": join(__dirname, "../../../SpiritImages/miku.jpg"),
   "Nia Honjou": join(__dirname, "../../../SpiritImages/nia.jpg"),
   "Tohka Yatogami": join(__dirname, "../../../SpiritImages/tohka.jpeg"),
+  "Tobiichi Origami": join(__dirname, "../../../SpiritImages/origami.png"),
 };
 
 export default {

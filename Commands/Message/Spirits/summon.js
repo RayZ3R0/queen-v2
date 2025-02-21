@@ -40,6 +40,7 @@ const SPIRITS = [
   "Kyouno Natsumi",
   "Mukuro Hoshimiya",
   "Nia Honjou",
+  "Tobiichi Origami",
 ];
 
 const getRandomColor = () => Math.floor(Math.random() * 0xffffff);

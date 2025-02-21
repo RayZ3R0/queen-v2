@@ -2,7 +2,7 @@ import { promisify } from "util";
 import { AbilityEffects, normalAttackDamage } from "./abilities.js";
 const wait = promisify(setTimeout);
 
-const WAIT_TIME = 3500;
+const WAIT_TIME = 1000;
 
 /* --- Utility for Cosmetic Output --- */
 const STARMOJI = "<a:1006138461234937887:1342052087084613702>";
@@ -168,7 +168,7 @@ Energy: ${this.enemy.energy}/100`
     if (actor.stunTurns > 0) {
       // Use a custom stun message if available; else fallback.
       msg = actor.stunMessage;
-      actor.stunMessage = null;
+      // actor.stunMessage = null;
       actor.stunTurns--;
     } else if (actor.energy >= 100) {
       actor.energy -= 100;
