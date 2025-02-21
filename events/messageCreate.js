@@ -102,7 +102,7 @@ client.on("messageCreate", async (message) => {
 
       return client.sendEmbed(
         message,
-        `You are currently on cooldown. Please wait for ${timeString} before trying again.`
+        `You are currently on cooldown. Please wait for **${timeString}** before trying again.`
       );
     }
 
