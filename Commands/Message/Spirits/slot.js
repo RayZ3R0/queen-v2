@@ -120,14 +120,14 @@ export default {
           case "easy":
             if (reel1 === reel2 && reel2 === reel3) {
               if (reel1 === "7️⃣") {
-                multiplier = 6;
+                multiplier = 3;
                 outcome = "Triple 7's in Easy mode! Small jackpot!";
               } else {
-                multiplier = 3;
+                multiplier = 2;
                 outcome = "Triple match in Easy mode! Nice win!";
               }
             } else if (reel1 === reel2 || reel2 === reel3 || reel1 === reel3) {
-              multiplier = 2;
+              multiplier = 1.2;
               outcome = "Double match in Easy mode! You win a little.";
             } else {
               // Refund 20% of the bet if no match
@@ -138,14 +138,14 @@ export default {
           case "normal":
             if (reel1 === reel2 && reel2 === reel3) {
               if (reel1 === "7️⃣") {
-                multiplier = 10;
+                multiplier = 5;
                 outcome = "Triple 7's! Jackpot!";
               } else {
-                multiplier = 5;
+                multiplier = 3;
                 outcome = "Triple match! Great win!";
               }
             } else if (reel1 === reel2 || reel2 === reel3 || reel1 === reel3) {
-              multiplier = 2;
+              multiplier = 1.5;
               outcome = "Double match! You win a little.";
             } else {
               multiplier = 0;
@@ -155,10 +155,10 @@ export default {
           case "hard":
             if (reel1 === reel2 && reel2 === reel3) {
               if (reel1 === "7️⃣") {
-                multiplier = 25;
+                multiplier = 15;
                 outcome = "Triple 7's in Hard mode! Massive jackpot!";
               } else {
-                multiplier = 15;
+                multiplier = 10;
                 outcome = "Triple match in Hard mode! Huge win!";
               }
             } else if (reel1 === reel2 || reel2 === reel3 || reel1 === reel3) {
