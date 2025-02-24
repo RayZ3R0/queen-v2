@@ -95,3 +95,39 @@
     at WebSocketManager.<anonymous> (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/WebSocketManager.js:232:12)
     at WebSocketManager.emit (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@vladfrangu+async_event_emitter@2.4.6/node_modules/@vladfrangu/async_event_emitter/dist/index.cjs:287:31)
     at WebSocketShard.<anonymous> (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@discordjs+ws@1.2.1/node_modules/@discordjs/ws/dist/index.js:1190:51)
+[error] - [94m[antiCrash] [39m[31mUnhandled rejection detected.[39m
+[error] - SimplyError: SimplyError - ticketSetup | An Error occured when running the function
+
+TypeError: Cannot destructure property 'client' of 'msgOrint' as it is undefined.
+    at /home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/simply-djs@4.1.1_@aws-sdk+credential-providers@3.750.0/node_modules/simply-djs/lib/src/ticketSetup.js:27:21
+    at new Promise (<anonymous>)
+    at Object.ticketSetup (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/simply-djs@4.1.1_@aws-sdk+credential-providers@3.750.0/node_modules/simply-djs/lib/src/ticketSetup.js:25:12)
+    at Object.run (file:///home/z3r0/Documents/GitHub/queen-v2/Commands/Message/Dev/ticketsetup.js:31:23)
+    at Bot.<anonymous> (file:///home/z3r0/Documents/GitHub/queen-v2/events/messageCreate.js:110:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at /home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/simply-djs@4.1.1_@aws-sdk+credential-providers@3.750.0/node_modules/simply-djs/lib/src/ticketSetup.js:140:23
+    at new Promise (<anonymous>)
+    at Object.ticketSetup (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/simply-djs@4.1.1_@aws-sdk+credential-providers@3.750.0/node_modules/simply-djs/lib/src/ticketSetup.js:25:12)
+    at Object.run (file:///home/z3r0/Documents/GitHub/queen-v2/Commands/Message/Dev/ticketsetup.js:31:23)
+    at Bot.<anonymous> (file:///home/z3r0/Documents/GitHub/queen-v2/events/messageCreate.js:110:19)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[info] - Bulk deletion of 10 messages detected.
+[error] - Error in messageDeleteBulk event: ReferenceError: AttachmentBuilder is not defined
+    at Bot.<anonymous> (file:///home/z3r0/Documents/GitHub/queen-v2/events/logs.js:385:13)
+    at Bot.emit (node:events:507:28)
+    at MessageDeleteBulkAction.handle (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/actions/MessageDeleteBulk.js:40:37)
+    at module.exports [as MESSAGE_DELETE_BULK] (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/handlers/MESSAGE_DELETE_BULK.js:4:36)
+    at WebSocketManager.handlePacket (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/WebSocketManager.js:348:31)
+    at WebSocketManager.<anonymous> (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/WebSocketManager.js:232:12)
+    at WebSocketManager.emit (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@vladfrangu+async_event_emitter@2.4.6/node_modules/@vladfrangu/async_event_emitter/dist/index.cjs:287:31)
+    at WebSocketShard.<anonymous> (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@discordjs+ws@1.2.1/node_modules/@discordjs/ws/dist/index.js:1190:51)
+    at WebSocketShard.emit (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@vladfrangu+async_event_emitter@2.4.6/node_modules/@vladfrangu/async_event_emitter/dist/index.cjs:287:31)
+    at WebSocketShard.onMessage (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@discordjs+ws@1.2.1/node_modules/@discordjs/ws/dist/index.js:1007:14)
+[info] - channelCreate: ticket-z3r069
+[info] - channelPinsUpdate: ticket-z3r069 at 1740423861000
+[info] - channelDelete: ticket-z3r069
+[error] - [94m[antiCrash] [39m[31mUnhandled rejection detected.[39m
+[error] - TypeError: Cannot read properties of null (reading 'name')
+    at file:///home/z3r0/Documents/GitHub/queen-v2/utils/clickBtn.js:442:70
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async Timeout._onTimeout (file:///home/z3r0/Documents/GitHub/queen-v2/utils/clickBtn.js:435:11)
