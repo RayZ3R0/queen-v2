@@ -1,0 +1,97 @@
+[error] - [94m[antiCrash] [39m[31mMultiple resolves detected.[39m
+[error] - resolve
+[error] - [94m[antiCrash] [39m[31mMultiple resolves detected.[39m
+[error] - reject
+[error] - [94m[antiCrash] [39m[31mMultiple resolves detected.[39m
+[error] - reject
+[error] - [94m[antiCrash] [39m[31mMultiple resolves detected.[39m
+[error] - reject
+[error] - [94m[antiCrash] [39m[31mMultiple resolves detected.[39m
+[error] - resolve
+[error] - [94m[antiCrash] [39m[31mMultiple resolves detected.[39m
+[error] - resolve
+[error] - [94m[antiCrash] [39m[31mMultiple resolves detected.[39m
+[error] - reject
+[error] - [94m[antiCrash] [39m[31mMultiple resolves detected.[39m
+[error] - reject
+[error] - [94m[antiCrash] [39m[31mMultiple resolves detected.[39m
+[error] - reject
+[error] - [94m[antiCrash] [39m[31mMultiple resolves detected.[39m
+[error] - resolve
+[error] - [94m[antiCrash] [39m[31mMultiple resolves detected.[39m
+[error] - resolve
+[error] - [94m[antiCrash] [39m[31mMultiple resolves detected.[39m
+[error] - reject
+[error] - [94m[antiCrash] [39m[31mMultiple resolves detected.[39m
+[error] - reject
+[error] - [94m[antiCrash] [39m[31mMultiple resolves detected.[39m
+[error] - reject
+[error] - [94m[antiCrash] [39m[31mMultiple resolves detected.[39m
+[error] - resolve
+[error] - Error in messageUpdate event: ReferenceError: ChannelType is not defined
+    at Bot.<anonymous> (file:///home/z3r0/Documents/GitHub/queen-v2/events/logs.js:310:62)
+    at Bot.emit (node:events:507:28)
+    at module.exports [as MESSAGE_UPDATE] (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/handlers/MESSAGE_UPDATE.js:14:12)
+    at WebSocketManager.handlePacket (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/WebSocketManager.js:348:31)
+    at WebSocketManager.<anonymous> (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/WebSocketManager.js:232:12)
+    at WebSocketManager.emit (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@vladfrangu+async_event_emitter@2.4.6/node_modules/@vladfrangu/async_event_emitter/dist/index.cjs:287:31)
+    at WebSocketShard.<anonymous> (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@discordjs+ws@1.2.1/node_modules/@discordjs/ws/dist/index.js:1190:51)
+    at WebSocketShard.emit (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@vladfrangu+async_event_emitter@2.4.6/node_modules/@vladfrangu/async_event_emitter/dist/index.cjs:287:31)
+    at WebSocketShard.onMessage (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@discordjs+ws@1.2.1/node_modules/@discordjs/ws/dist/index.js:1007:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[error] - Error in messageUpdate event: TypeError: Cannot read properties of null (reading 'bot')
+    at Bot.<anonymous> (file:///home/z3r0/Documents/GitHub/queen-v2/events/logs.js:311:27)
+    at Bot.emit (node:events:507:28)
+    at module.exports [as MESSAGE_UPDATE] (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/handlers/MESSAGE_UPDATE.js:14:12)
+    at WebSocketManager.handlePacket (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/WebSocketManager.js:348:31)
+    at WebSocketManager.<anonymous> (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/WebSocketManager.js:232:12)
+    at WebSocketManager.emit (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@vladfrangu+async_event_emitter@2.4.6/node_modules/@vladfrangu/async_event_emitter/dist/index.cjs:287:31)
+    at WebSocketShard.<anonymous> (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@discordjs+ws@1.2.1/node_modules/@discordjs/ws/dist/index.js:1190:51)
+    at WebSocketShard.emit (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@vladfrangu+async_event_emitter@2.4.6/node_modules/@vladfrangu/async_event_emitter/dist/index.cjs:287:31)
+    at WebSocketShard.onMessage (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@discordjs+ws@1.2.1/node_modules/@discordjs/ws/dist/index.js:1007:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[error] - Error in messageUpdate event: TypeError [ColorConvert]: Unable to convert "#69735" to a number.
+    at resolveColor (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/util/Util.js:299:11)
+    at EmbedBuilder.setColor (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/structures/EmbedBuilder.js:23:36)
+    at Bot.<anonymous> (file:///home/z3r0/Documents/GitHub/queen-v2/events/logs.js:324:8)
+    at Bot.emit (node:events:507:28)
+    at module.exports [as MESSAGE_UPDATE] (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/handlers/MESSAGE_UPDATE.js:14:12)
+    at WebSocketManager.handlePacket (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/WebSocketManager.js:348:31)
+    at WebSocketManager.<anonymous> (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/WebSocketManager.js:232:12)
+    at WebSocketManager.emit (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@vladfrangu+async_event_emitter@2.4.6/node_modules/@vladfrangu/async_event_emitter/dist/index.cjs:287:31)
+    at WebSocketShard.<anonymous> (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@discordjs+ws@1.2.1/node_modules/@discordjs/ws/dist/index.js:1190:51)
+    at WebSocketShard.emit (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@vladfrangu+async_event_emitter@2.4.6/node_modules/@vladfrangu/async_event_emitter/dist/index.cjs:287:31)
+[error] - [94m[antiCrash] [39m[31mUncaught exception (Monitor) detected.[39m
+[error] - Error [InteractionAlreadyReplied]: The reply to this interaction has already been sent or deferred.
+    at ButtonInteraction.reply (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/structures/interfaces/InteractionResponses.js:163:46)
+    at Bot.<anonymous> (file:///home/z3r0/Documents/GitHub/queen-v2/events/reactionroles.js:86:28)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[error] - [94m[antiCrash] [39m[31mUncaught exception detected.[39m
+[error] - Error [InteractionAlreadyReplied]: The reply to this interaction has already been sent or deferred.
+    at ButtonInteraction.reply (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/structures/interfaces/InteractionResponses.js:163:46)
+    at Bot.<anonymous> (file:///home/z3r0/Documents/GitHub/queen-v2/events/reactionroles.js:86:28)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[error] - Error in messageDelete event: TypeError [ColorConvert]: Unable to convert "d60ed" to a number.
+    at resolveColor (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/util/Util.js:299:11)
+    at EmbedBuilder.setColor (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/structures/EmbedBuilder.js:23:36)
+    at Bot.<anonymous> (file:///home/z3r0/Documents/GitHub/queen-v2/events/logs.js:280:8)
+    at Bot.emit (node:events:507:28)
+    at MessageDeleteAction.handle (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/actions/MessageDelete.js:24:16)
+    at module.exports [as MESSAGE_DELETE] (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/handlers/MESSAGE_DELETE.js:4:32)
+    at WebSocketManager.handlePacket (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/WebSocketManager.js:348:31)
+    at WebSocketManager.<anonymous> (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/WebSocketManager.js:232:12)
+    at WebSocketManager.emit (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@vladfrangu+async_event_emitter@2.4.6/node_modules/@vladfrangu/async_event_emitter/dist/index.cjs:287:31)
+    at WebSocketShard.<anonymous> (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@discordjs+ws@1.2.1/node_modules/@discordjs/ws/dist/index.js:1190:51)
+[info] - channelPinsUpdate: channel-logs at 1740419316000
+[info] - channelDelete: member-logs
+[error] - Error in messageDelete event: TypeError [ColorConvert]: Unable to convert "10c01" to a number.
+    at resolveColor (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/util/Util.js:299:11)
+    at EmbedBuilder.setColor (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/structures/EmbedBuilder.js:23:36)
+    at Bot.<anonymous> (file:///home/z3r0/Documents/GitHub/queen-v2/events/logs.js:280:8)
+    at Bot.emit (node:events:507:28)
+    at MessageDeleteAction.handle (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/actions/MessageDelete.js:24:16)
+    at module.exports [as MESSAGE_DELETE] (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/handlers/MESSAGE_DELETE.js:4:32)
+    at WebSocketManager.handlePacket (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/WebSocketManager.js:348:31)
+    at WebSocketManager.<anonymous> (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/discord.js@14.18.0/node_modules/discord.js/src/client/websocket/WebSocketManager.js:232:12)
+    at WebSocketManager.emit (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@vladfrangu+async_event_emitter@2.4.6/node_modules/@vladfrangu/async_event_emitter/dist/index.cjs:287:31)
+    at WebSocketShard.<anonymous> (/home/z3r0/Documents/GitHub/queen-v2/node_modules/.pnpm/@discordjs+ws@1.2.1/node_modules/@discordjs/ws/dist/index.js:1190:51)
