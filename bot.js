@@ -5,9 +5,14 @@ import { Bot } from "./handlers/Client.js";
 // Connect to MongoDB
 const mongodbUri = process.env.MONGODB_URI;
 mongoose
-  .connect(mongodbUri)
+  .connect(mongodbUri, {
+    serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of default 30s
+    socketTimeoutMS: 45000,
+    retryWrites: true,
+  })
   .then(() => console.log("> ✅ Connected to MongoDB"))
   .catch((err) => console.error("> ❌ Failed to connect to MongoDB:", err));
+// mongoose.set("debug", true);
 
 /**
  * The client instance representing the bot.

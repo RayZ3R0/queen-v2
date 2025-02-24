@@ -10,10 +10,10 @@ export default {
   botPermissions: [],
 
   run: async ({ client, message, args, prefix }) => {
-    let rewardAmount = 100;
+    let rewardAmount = 300;
     // Bonus amount if the user has the special role
     if (message.member.roles.cache.has("927097726934601729"))
-      rewardAmount = 200;
+      rewardAmount = 600;
 
     try {
       const userProfile = await profileSchema.findOne({
