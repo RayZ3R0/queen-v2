@@ -1,4 +1,3 @@
-// filepath: /home/z3r0/Documents/GitHub/queen-v2/Commands/Message/Spirits/roulette.js
 import {
   EmbedBuilder,
   ActionRowBuilder,
@@ -7,6 +6,7 @@ import {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  AttachmentBuilder,
 } from "discord.js";
 import profileSchema from "../../../schema/profile.js";
 
@@ -44,7 +44,10 @@ export default {
           content: `You do not have enough Spirit Coins. Your balance is \`${userProfile.balance}\`.`,
         });
 
-      // Build the initial embed.
+      // Create an attachment for the image.
+      const rouletteGif = new AttachmentBuilder("../../../Cards/giphy.gif");
+
+      // Build the initial embed using the attachment.
       const rouletteEmbed = new EmbedBuilder()
         .setColor("#ffaa00")
         .setTitle("Roulette")
@@ -57,6 +60,7 @@ export default {
             "• **Specific Number** (pays 36× your bet)\n\n" +
             "Select your betting option from the menu."
         )
+        .setImage("attachment://giphy.gif")
         .setFooter({
           text: `Current Balance: ${userProfile.balance} Spirit Coins`,
         });
@@ -85,6 +89,7 @@ export default {
       const initialMessage = await message.channel.send({
         embeds: [rouletteEmbed],
         components: [row],
+        files: [rouletteGif],
       });
 
       const filter = (i) =>
