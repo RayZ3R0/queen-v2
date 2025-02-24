@@ -59,12 +59,9 @@
     "discord.js": "^14.17.3",
     "dotenv": "^16.4.7",
     "fs": "0.0.1-security",
-    "jimp": "^1.6.0",
     "module": "^1.2.5",
     "mongoose": "^8.10.1",
     "path": "^0.12.7",
-    "simply-djs": "^4.1.1",
-    "simply-xp": "1.3.7",
     "url": "^0.11.4",
     "winston": "^3.17.0"
   },
