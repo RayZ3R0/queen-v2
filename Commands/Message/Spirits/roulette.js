@@ -59,7 +59,7 @@ export default {
             "Select your betting option from the menu."
         )
         .setImage(
-          "https://4get.sudovanilla.org/proxy?i=https%3A%2F%2Fmedia0.giphy.com%2Fmedia%2FmGEV8Tb7Jbl8m5SU9r%2Fgiphy.gif"
+          "https://media.discordapp.net/attachments/1343509422496026646/1343509709122179102/roulette.gif"
         )
         .setFooter({
           text: `Current Balance: ${userProfile.balance} Spirit Coins`,
@@ -100,13 +100,12 @@ export default {
       });
 
       collector.on("collect", async (interaction) => {
-        await interaction.deferUpdate();
         let choice = interaction.values[0]; // "red", "black", "green", or "number"
         let betType = "";
         let userNumber = null; // For a specific number bet
 
-        // If the user chose "number", show a modal to get their chosen number.
         if (choice === "number") {
+          // Don't defer here – immediately show modal.
           const modal = new ModalBuilder()
             .setCustomId("roulette_modal")
             .setTitle("Enter Your Number Bet");
@@ -147,6 +146,8 @@ export default {
           betType = `Number ${userNumber}`;
           await modalInteraction.deferUpdate();
         } else {
+          // For non modal choices, first defer the update.
+          await interaction.deferUpdate();
           betType = choice[0].toUpperCase() + choice.slice(1);
         }
 
