@@ -13,37 +13,44 @@ import profileSchema from "../../../schema/profile.js";
 
 export default {
   name: "roulette",
-  aliases: ["roul"],
+  aliases: ["roul", "r"],
   description:
     "Play roulette! Bet your Spirit Coins on a color or a specific number and try your luck on the wheel!",
   usage: "<bet>",
-  cooldown: 30,
+  cooldown: 10,
   category: "Spirits",
   userPermissions: [],
   botPermissions: [],
-
+  gambling: true,
   run: async ({ client, message, args, prefix }) => {
     try {
       // Parse bet amount from args.
       const bet = parseInt(args[0]);
-      if (isNaN(bet) || bet <= 0)
-        return message.reply({
+      if (isNaN(bet) || bet <= 0) {
+        await message.reply({
           content: "Please provide a valid bet amount greater than 0.",
         });
+        return false; // This signals to your messageCreate handler to bypass setting cooldown.
+      }
 
       // Fetch the user's profile.
       const userProfile = await profileSchema.findOne({
         userid: message.author.id,
       });
-      if (!userProfile)
-        return message.reply({
+      if (!userProfile) {
+        await message.reply({
           content:
             "You do not have a profile yet. Please use the `start` command first.",
         });
-      if (userProfile.balance < bet)
-        return message.reply({
+        return false;
+      }
+
+      if (userProfile.balance < bet) {
+        await message.reply({
           content: `You do not have enough Spirit Coins. Your balance is \`${userProfile.balance}\`.`,
         });
+        return false;
+      }
 
       // Build the initial embed.
       const rouletteEmbed = new EmbedBuilder()
@@ -209,9 +216,13 @@ export default {
         if (win && payoutMultiplier) {
           winAmount = bet * payoutMultiplier;
           newBalance += winAmount - bet;
+          // Ensure balance remains an integer.
+          newBalance = Math.round(newBalance);
           outcomeDescription = `Congratulations! The wheel landed on **${winningNumber} (${winningColor.toUpperCase()})** and your bet on **${betType}** wins!\nYou earn **${winAmount} Spirit Coins**.`;
         } else {
           newBalance -= bet;
+          // Ensure balance remains an integer.
+          newBalance = Math.round(newBalance);
           outcomeDescription = `Sorry. The wheel landed on **${winningNumber} (${winningColor.toUpperCase()})** and your bet on **${betType}** loses.\nYou lost **${bet} Spirit Coins**.`;
         }
 

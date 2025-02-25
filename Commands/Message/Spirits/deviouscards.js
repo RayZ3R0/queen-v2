@@ -266,6 +266,7 @@ export default {
   category: "Spirits",
   userPermissions: [],
   botPermissions: [],
+  gambling: true,
   run: async ({ client, message, args, prefix }) => {
     try {
       // --- Input Validation ---

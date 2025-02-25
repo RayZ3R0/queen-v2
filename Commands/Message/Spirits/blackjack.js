@@ -119,11 +119,11 @@ export default {
   aliases: ["bj"],
   description: "Play a game of blackjack and bet your Spirit Coins!",
   usage: "<bet>",
-  cooldown: 30,
+  cooldown: 10,
   userPermissions: [],
   botPermissions: [],
   category: "Spirits",
-
+  gambling: true,
   run: async ({ client, message, args, prefix }) => {
     try {
       const bet = parseInt(args[0]);
@@ -278,7 +278,7 @@ export default {
         }
         await profileSchema.findOneAndUpdate(
           { userid: message.author.id },
-          { balance: newBalance }
+          { balance: Math.ceil(newBalance) }
         );
 
         const resultEmbed = new EmbedBuilder()
@@ -295,7 +295,7 @@ export default {
               .map((c) => `\`${c.code}\``)
               .join(" ")} (Total: **${finalPlayerTotal}**)\n` +
               resultMessage +
-              `\n**New Balance:** ${newBalance} Spirit Coins.`
+              `\n**New Balance:** ${Math.ceil(newBalance)} Spirit Coins.`
           )
           .addFields(
             { name: "Bet", value: `${bet} Spirit Coins`, inline: true },

@@ -24,7 +24,7 @@ export default {
       client.users.cache.get(args[0]) ||
       message.author;
 
-    const coinsToAdd = parseInt(args[1]);
+    const coinsToAdd = parseFloat(args[1]);
     if (isNaN(coinsToAdd)) {
       return message.channel.send({
         content: "Please provide a valid number of coins.",

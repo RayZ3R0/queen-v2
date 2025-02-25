@@ -1,4 +1,4 @@
-import { cooldown } from "../handlers/functions.js";
+import { getCooldown, setCooldown } from "../handlers/functions.js";
 import { client } from "../bot.js";
 
 /**
@@ -30,7 +30,7 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    // Find the command by name or alias
+    // Find the command by name or alias.
     /**
      * @type {import("../index.js").Mcommand}
      */
@@ -39,13 +39,12 @@ client.on("messageCreate", async (message) => {
       client.mcommands.find(
         (cmds) => cmds.aliases && cmds.aliases.includes(cmd)
       );
-
     if (!command) return;
 
     const { owneronly, userPermissions, botPermissions } = command;
     const { author, member, guild } = message;
 
-    // Check if the command is owner-only
+    // Check if the command is owner-only.
     if (owneronly && !client.config.Owners.includes(author.id)) {
       return client.sendEmbed(
         message,
@@ -53,7 +52,7 @@ client.on("messageCreate", async (message) => {
       );
     }
 
-    // Check user permissions
+    // Check user permissions.
     const missingUserPerms = userPermissions.filter(
       (perm) => !member.permissions.has(perm)
     );
@@ -67,7 +66,7 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    // Check bot permissions
+    // Check bot permissions.
     const missingBotPerms = botPermissions.filter(
       (perm) => !guild.members.me.permissions.has(perm)
     );
@@ -81,15 +80,14 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    // Check command cooldown using MongoDB
-    const cd = await cooldown(message, command);
+    // Check command cooldown without applying it yet.
+    const cd = await getCooldown(message, command);
     if (cd) {
       const totalSeconds = Math.floor(cd);
       const days = Math.floor(totalSeconds / 86400);
       const hours = Math.floor((totalSeconds % 86400) / 3600);
       const minutes = Math.floor((totalSeconds % 3600) / 60);
       const seconds = totalSeconds % 60;
-
       const timeParts = [];
       if (days) timeParts.push(`${days} day${days !== 1 ? "s" : ""}`);
       if (hours) timeParts.push(`${hours} hour${hours !== 1 ? "s" : ""}`);
@@ -97,17 +95,49 @@ client.on("messageCreate", async (message) => {
         timeParts.push(`${minutes} minute${minutes !== 1 ? "s" : ""}`);
       if (seconds)
         timeParts.push(`${seconds} second${seconds !== 1 ? "s" : ""}`);
-
       const timeString = timeParts.join(" ");
-
       return client.sendEmbed(
         message,
         `You are currently on cooldown. Please wait for **${timeString}** before trying again.`
       );
     }
 
-    // Execute the command
-    await command.run({ client, message, args, prefix });
+    // If the command is gambling, check if the user is already in a session.
+    let isGamblingCommand = command.gambling === true;
+    if (isGamblingCommand) {
+      if (client.activeGambleSessions.has(message.author.id)) {
+        return client.sendEmbed(
+          message,
+          "You already have an active gambling session. Please finish it before starting a new one."
+        );
+      }
+      // Mark the user as active.
+      client.activeGambleSessions.add(message.author.id);
+    }
+
+    try {
+      // Execute the command.
+      const shouldSetCooldown = await command.run({
+        client,
+        message,
+        args,
+        prefix,
+      });
+      if (shouldSetCooldown !== false && !command.noCooldownOnFail) {
+        await setCooldown(message, command);
+      }
+    } catch (error) {
+      console.error("Command error:", error);
+      await client.sendEmbed(
+        message,
+        "An error occurred while executing that command. The cooldown will not be applied."
+      );
+    } finally {
+      // If it was a gambling command, remove the active session flag.
+      if (isGamblingCommand) {
+        client.activeGambleSessions.delete(message.author.id);
+      }
+    }
   } catch (error) {
     console.error(
       "An error occurred while processing messageCreate event:",

@@ -49,6 +49,7 @@ export class Bot extends Client {
     this.mcommands = new Collection();
     this.cooldowns = new Collection();
     this.events = new Collection();
+    this.activeGambleSessions = new Set();
   }
 
   /**

@@ -16,11 +16,11 @@ export default {
     "At any point, you can exit to cash out your accumulated winnings (bet × multiplier), but the deeper you venture, the higher the rewards—and the risk! " +
     "Beware, for one false move could trigger a trap, causing you to lose your wager. Additionally, mysterious artifacts may appear, offering bonus multipliers for the daring.",
   usage: "<bet>",
-  cooldown: 90,
+  cooldown: 30,
   category: "Spirits",
   userPermissions: [],
   botPermissions: [],
-
+  gambling: true,
   run: async ({ client, message, args, prefix }) => {
     try {
       // Parse bet.
@@ -55,8 +55,8 @@ export default {
 
       // Standard path info (multipliers and risk percentages)
       const pathData = {
-        safe: { multiplier: 1.2, risk: 0.05 },
-        risky: { multiplier: 1.8, risk: 0.3 },
+        safe: { multiplier: 1.1, risk: 0.15 },
+        risky: { multiplier: 1.3, risk: 0.4 },
         mysterious: { multiplier: 2.5, risk: 0.6 },
       };
 
@@ -234,8 +234,8 @@ export default {
 
         let description =
           "The labyrinth unfurls before you. Choose your path:\n\n" +
-          `• **${safeLabel}**:  ×${pathData.safe.multiplier} (5% trap chance)\n` +
-          `• **${riskyLabel}**:  ×${pathData.risky.multiplier} (30% trap chance)\n` +
+          `• **${safeLabel}**:  ×${pathData.safe.multiplier} (15% trap chance)\n` +
+          `• **${riskyLabel}**:  ×${pathData.risky.multiplier} (40% trap chance)\n` +
           `• **${mysteriousLabel}**:  ×${pathData.mysterious.multiplier} (60% trap chance)\n\n` +
           "Or decide to escape the maze and claim your current winnings.";
         const embed = createGameEmbed(round, currentMultiplier, description);
@@ -355,8 +355,8 @@ export default {
 
       // Cash out function.
       const cashOut = async () => {
-        const winnings = parseFloat((bet * currentMultiplier).toFixed(2));
-        const newBalance = userProfile.balance - bet + winnings;
+        const winnings = Math.ceil(bet * currentMultiplier);
+        const newBalance = Math.ceil(userProfile.balance - bet + winnings);
         await profileSchema.findOneAndUpdate(
           { userid: message.author.id },
           { balance: newBalance }

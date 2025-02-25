@@ -13,10 +13,11 @@ export default {
   description:
     "Dice Duel is an immersive gambling command where you challenge the bot in a dice rolling duel. You wager your Spirit Coins and both you and the bot roll two dice. Watch a brief animation simulating the dice roll, and then see your final totals. If your total is higher than the bot's, you win double your bet. If it's lower, you lose your bet, and if it's a tie, it's a push and your bet is returned. Bet wisely and may luck be on your side!",
   usage: "<bet>",
-  cooldown: 30,
+  cooldown: 10,
   category: "Spirits",
   userPermissions: [],
   botPermissions: [],
+  gambling: true,
 
   run: async ({ client, message, args, prefix }) => {
     try {
@@ -142,14 +143,15 @@ export default {
         // Update the user's profile.
         await profileSchema.findOneAndUpdate(
           { userid: message.author.id },
-          { balance: newBalance }
+          { balance: Math.ceil(newBalance) }
         );
 
         const resultEmbed = new EmbedBuilder()
           .setTitle("Dice Duel - Result")
           .setColor(win ? "#00ff00" : push ? "#ffff00" : "#ff0000")
           .setDescription(
-            resultDesc + `\n\n**New Balance:** ${newBalance} Spirit Coins`
+            resultDesc +
+              `\n\n**New Balance:** ${Math.ceil(newBalance)} Spirit Coins`
           )
           .setFooter({ text: "Thanks for playing!" });
 

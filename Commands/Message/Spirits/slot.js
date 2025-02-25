@@ -13,11 +13,11 @@ export default {
   description:
     "Play a slot machine game and bet your Spirit Coins! You can also set a difficulty mode: easy, normal, or hard.",
   usage: "<bet> [easy|normal|hard]",
-  cooldown: 30,
+  cooldown: 10,
   category: "Spirits",
   userPermissions: [],
   botPermissions: [],
-
+  gambling: true,
   run: async ({ client, message, args, prefix }) => {
     try {
       // Parse bet
@@ -175,7 +175,7 @@ export default {
         let winAmount = 0;
         let newBalance = userProfile.balance;
         if (multiplier > 0) {
-          winAmount = bet * multiplier;
+          winAmount = Math.ceil(bet * multiplier);
           newBalance += winAmount;
         } else if (multiplier < 0) {
           // Negative multiplier implies a partial refund loss
@@ -189,7 +189,7 @@ export default {
         // Update the profile balance
         await profileSchema.findOneAndUpdate(
           { userid: message.author.id },
-          { balance: newBalance }
+          { balance: Math.ceil(newBalance) }
         );
 
         const resultEmbed = new EmbedBuilder()
@@ -205,7 +205,7 @@ export default {
                     bet - winAmount
                   } Spirit Coins** (with a partial refund of ${winAmount}).`
                 : `You've lost **${bet} Spirit Coins**.`) +
-              `\n\n**New Balance:** ${newBalance} Spirit Coins`
+              `\n\n**New Balance:** ${Math.ceil(newBalance)} Spirit Coins`
           )
           .setFooter({ text: "Thanks for playing!" });
 
