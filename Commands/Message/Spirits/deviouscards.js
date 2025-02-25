@@ -19,6 +19,8 @@ const CHEAT_PROBABILITY = 0.3;
 const SOFT17_HIT_PROBABILITY = 0.5;
 const BORDERLINE_NUDGE_PROBABILITY = 0.35;
 const EXTRA_TWEAK_PROBABILITY = 0.2;
+const NATURAL_BLACKJACK_MULTIPLIER = 1.5; // Payout for natural blackjack (3:2)
+const MAX_ANIMATIONS_PER_MIN = 5; // Rate limiting - maximum number of animations
 
 // =================== File Path Setup =================== //
 const __filename = fileURLToPath(import.meta.url);
@@ -130,6 +132,11 @@ const calculateHandTotal = (hand) => {
   return total;
 };
 
+// Check if hand is a natural blackjack (first two cards totaling 21)
+const isNaturalBlackjack = (hand) => {
+  return hand.length === 2 && calculateHandTotal(hand) === 21;
+};
+
 // =================== Dealer Logic Functions =================== //
 const smartDealerMove = (dealerHand, deck) => {
   const isSoft17 = (hand) => {
@@ -207,8 +214,29 @@ const botCheatAdjustment = (dealerHand) => {
   return total;
 };
 
+// =================== Rate Limiting Utility =================== //
+// Track animation timestamps to prevent rate limiting
+const animationTimestamps = new Map();
+
+const canSendAnimation = (userId) => {
+  const now = Date.now();
+  const userAnimations = animationTimestamps.get(userId) || [];
+
+  // Filter out animations older than 60 seconds
+  const recentAnimations = userAnimations.filter((time) => now - time < 60000);
+
+  if (recentAnimations.length >= MAX_ANIMATIONS_PER_MIN) {
+    return false;
+  }
+
+  // Record this animation
+  recentAnimations.push(now);
+  animationTimestamps.set(userId, recentAnimations);
+  return true;
+};
+
 // =================== Modal Utility =================== //
-const showInsuranceModal = async (interaction) => {
+const showInsuranceModal = async (interaction, currentBet, currentBalance) => {
   try {
     const modal = new ModalBuilder()
       .setCustomId(`insurance_modal_${interaction.user.id}`)
@@ -217,9 +245,9 @@ const showInsuranceModal = async (interaction) => {
         new ActionRowBuilder().addComponents(
           new TextInputBuilder()
             .setCustomId("insurance_input")
-            .setLabel("Insurance (max half bet)")
+            .setLabel(`Insurance (max ${Math.floor(currentBet / 2)}`)
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder("e.g. 50")
+            .setPlaceholder(`e.g. ${Math.floor(currentBet / 4)}`)
             .setRequired(true)
         )
       );
@@ -240,12 +268,22 @@ const showInsuranceModal = async (interaction) => {
     await modalInteraction.deferReply({ ephemeral: true });
     const input = modalInteraction.fields.getTextInputValue("insurance_input");
     let insuranceBet = parseInt(input);
+
     if (isNaN(insuranceBet) || insuranceBet < 0) {
       insuranceBet = 0;
     }
+
+    // Cap the insurance bet at half the original bet
+    if (insuranceBet > Math.floor(currentBet / 2)) {
+      insuranceBet = Math.floor(currentBet / 2);
+    }
+
+    const newBalance = currentBalance - insuranceBet;
+
     await modalInteraction.editReply({
-      content: `Insurance bet set to ${insuranceBet} Spirit Coins.`,
+      content: `Insurance bet set to ${insuranceBet} Spirit Coins. Your new balance: ${newBalance} Spirit Coins.`,
     });
+
     return insuranceBet;
   } catch (err) {
     console.error("Error in showInsuranceModal:", err);
@@ -308,6 +346,7 @@ export default {
       let playerDoubled = false;
       let playerSurrendered = false;
       let insuranceBet = 0;
+      let currentBalance = userProfile.balance;
 
       // --- Rendering Functions ---
       const renderGameEmbed = () => {
@@ -323,9 +362,14 @@ export default {
               .map((card) => `\`${card.code}\``)
               .join(" ")}\n` +
               `Total: **${playerTotal}**\n` +
-              `**Dealer's Visible Card:** \`${dealerVisible.code}\``
+              `**Dealer's Visible Card:** \`${dealerVisible.code}\`` +
+              (isNaturalBlackjack(playerHand)
+                ? "\n\n**NATURAL BLACKJACK!**"
+                : "")
           )
-          .setFooter({ text: `Bet: ${bet} Spirit Coins` })
+          .setFooter({
+            text: `Bet: ${bet} Spirit Coins | Balance: ${currentBalance} Spirit Coins`,
+          })
           .setImage(`attachment://${dealerFileName}`);
         return { embed, dealerFileName, dealerImagePath };
       };
@@ -336,7 +380,7 @@ export default {
             .setCustomId("hit")
             .setLabel("Hit")
             .setStyle(ButtonStyle.Primary)
-            .setDisabled(disable),
+            .setDisabled(disable || isNaturalBlackjack(playerHand)),
           new ButtonBuilder()
             .setCustomId("stand")
             .setLabel("Stand")
@@ -346,12 +390,14 @@ export default {
             .setCustomId("double")
             .setLabel("Double Down")
             .setStyle(ButtonStyle.Danger)
-            .setDisabled(disable),
+            .setDisabled(
+              disable || playerHand.length > 2 || currentBalance < bet
+            ),
           new ButtonBuilder()
             .setCustomId("surrender")
             .setLabel("Surrender")
             .setStyle(ButtonStyle.Secondary)
-            .setDisabled(disable)
+            .setDisabled(disable || playerHand.length > 2)
         );
       };
 
@@ -365,7 +411,7 @@ export default {
             "Will you risk it all against our cunning dealer? Choose your move wisely..."
         )
         .setFooter({
-          text: `Your Balance: ${userProfile.balance} Spirit Coins`,
+          text: `Your Balance: ${currentBalance} Spirit Coins`,
         });
       await message.channel.send({ embeds: [introEmbed] });
 
@@ -380,6 +426,58 @@ export default {
         files: [dealerAttachment],
         components,
       });
+
+      // --- Check for Natural Blackjack ---
+      if (isNaturalBlackjack(playerHand)) {
+        // If player has natural blackjack, handle it immediately
+        const hasInsurance = dealerHand[0].rank === "A";
+        let resultMessage = "";
+        let winMultiplier = NATURAL_BLACKJACK_MULTIPLIER;
+
+        if (isNaturalBlackjack(dealerHand)) {
+          // Both have natural blackjack - it's a push
+          resultMessage =
+            "Both you and the dealer have natural blackjacks! It's a push.";
+          winMultiplier = 0; // No win, no loss
+        } else {
+          resultMessage = "Natural Blackjack! You win 3:2 on your bet.";
+        }
+
+        const winAmount = Math.floor(bet * winMultiplier);
+        currentBalance += winAmount;
+        await profileSchema.findOneAndUpdate(
+          { userid: message.author.id },
+          { balance: currentBalance }
+        );
+
+        const naturalBlackjackEmbed = new EmbedBuilder()
+          .setColor("#ffd700") // Gold color for blackjack
+          .setTitle("Natural Blackjack!")
+          .setDescription(
+            resultMessage +
+              `\n\n**Your Hand:** ${playerHand
+                .map((card) => `\`${card.code}\``)
+                .join(" ")}` +
+              `\n**Dealer's Hand:** ${dealerHand
+                .map((card) => `\`${card.code}\``)
+                .join(" ")}` +
+              `\n\n**Winnings:** ${
+                winMultiplier > 0
+                  ? `${winAmount} Spirit Coins`
+                  : "Push - bet returned"
+              }` +
+              `\n**New Balance:** ${currentBalance} Spirit Coins`
+          );
+
+        await gameMessage.edit({
+          embeds: [naturalBlackjackEmbed],
+          components: [buildActionRow(true)],
+        });
+
+        // End the gambling session
+        client.endGamblingSession(message.author.id);
+        return;
+      }
 
       // --- Handle Insurance if Dealer's Upcard is an Ace ---
       const filter = (i) => i.user.id === message.author.id;
@@ -406,17 +504,39 @@ export default {
             try {
               console.log("Insurance button clicked.");
               await interaction.deferUpdate();
-              insuranceBet = await showInsuranceModal(interaction);
+              insuranceBet = await showInsuranceModal(
+                interaction,
+                bet,
+                currentBalance
+              );
+
               if (insuranceBet > Math.floor(bet / 2)) {
                 insuranceBet = Math.floor(bet / 2);
               }
-              userProfile.balance -= insuranceBet;
+
+              // Update balance immediately when insurance is taken
+              currentBalance -= insuranceBet;
+              userProfile.balance = currentBalance;
               await profileSchema.findOneAndUpdate(
                 { userid: message.author.id },
-                { balance: userProfile.balance }
+                { balance: currentBalance }
               );
+
               console.log(`Insurance bet set to ${insuranceBet}`);
-              await gameMessage.edit({ components: [buildActionRow()] });
+
+              // Update the game embed with new balance
+              const updatedRendering = renderGameEmbed();
+              const updatedAttachment = new AttachmentBuilder(
+                updatedRendering.dealerImagePath,
+                { name: updatedRendering.dealerFileName }
+              );
+
+              await gameMessage.edit({
+                embeds: [updatedRendering.embed],
+                files: [updatedAttachment],
+                components: [buildActionRow()],
+              });
+
               resolve();
             } catch (err) {
               console.error("Error in insurance collector 'collect':", err);
@@ -451,11 +571,22 @@ export default {
 
           switch (interaction.customId) {
             case "hit":
+              // Check rate limiting before proceeding
+              if (!canSendAnimation(message.author.id)) {
+                await interaction.followUp({
+                  content:
+                    "You're making moves too quickly! Please wait a moment before your next action.",
+                  ephemeral: true,
+                });
+                return;
+              }
+
               playerHand.push(deck.pop());
               break;
             case "double":
-              if (playerHand.length === 2 && userProfile.balance >= bet * 2) {
+              if (playerHand.length === 2 && currentBalance >= bet) {
                 playerDoubled = true;
+                currentBalance -= bet; // Deduct the additional bet immediately
                 playerHand.push(deck.pop());
                 gameOver = true;
                 collector.stop("double");
@@ -516,12 +647,19 @@ export default {
           console.log(`Main collector ended with reason: ${reason}`);
 
           if (reason === "time") {
-            // End the gambling session when the game times out
+            // End the gambling session when the game times out with a thematic message
             client.endGamblingSession(message.author.id);
 
-            await message.channel.send({
-              content: "The game has timed out. Please start a new game.",
-            });
+            const timeoutEmbed = new EmbedBuilder()
+              .setColor("#442222")
+              .setTitle("The Devious Dealer Grows Impatient...")
+              .setDescription(
+                "The dealer drums his fingers on the table, his smile fading to a cold stare.\n\n" +
+                  "\"Time is money, and you've wasted mine. Return when you're ready to play seriously.\"" +
+                  "\n\nYour bet has been returned. The game has ended."
+              );
+
+            await message.channel.send({ embeds: [timeoutEmbed] });
             await gameMessage.edit({ components: [buildActionRow(true)] });
             return;
           }
@@ -530,35 +668,52 @@ export default {
 
           if (reason === "surrender") {
             const surrenderLoss = Math.floor(bet / 2);
-            userProfile.balance -= surrenderLoss;
+            currentBalance -= surrenderLoss;
             await profileSchema.findOneAndUpdate(
               { userid: message.author.id },
-              { balance: userProfile.balance }
+              { balance: currentBalance }
             );
 
             // End the gambling session when player surrenders
             client.endGamblingSession(message.author.id);
 
-            await message.channel.send({
-              content: `${message.author}, you surrendered! You lose **${surrenderLoss} Spirit Coins**. New balance: ${userProfile.balance} Spirit Coins.`,
-            });
+            const surrenderEmbed = new EmbedBuilder()
+              .setColor("#AA7722")
+              .setTitle("Strategic Retreat")
+              .setDescription(
+                '"A wise decision, perhaps," the dealer says with a thin smile.\n\n' +
+                  `You surrender and lose **${surrenderLoss} Spirit Coins**, half your bet.` +
+                  `\n\n**New Balance:** ${currentBalance} Spirit Coins`
+              );
+
+            await message.channel.send({ embeds: [surrenderEmbed] });
             await gameMessage.edit({ components: [buildActionRow(true)] });
             return;
           }
 
           if (reason === "player_busted") {
-            userProfile.balance -= bet;
+            currentBalance -= bet;
             await profileSchema.findOneAndUpdate(
               { userid: message.author.id },
-              { balance: userProfile.balance }
+              { balance: currentBalance }
             );
 
             // End the gambling session when player busts
             client.endGamblingSession(message.author.id);
 
-            await message.channel.send({
-              content: `${message.author}, you busted! You lose your bet of ${bet} Spirit Coins. New balance: ${userProfile.balance} Spirit Coins.`,
-            });
+            const bustEmbed = new EmbedBuilder()
+              .setColor("#CC0000")
+              .setTitle("Bust!")
+              .setDescription(
+                '"Oh dear, it seems fortune has abandoned you," the dealer says with poorly concealed delight.\n\n' +
+                  `Your hand of ${playerHand
+                    .map((card) => `\`${card.code}\``)
+                    .join(" ")} totals **${playerTotal}** - you've busted!` +
+                  `\n\nYou lose your bet of **${bet} Spirit Coins**.` +
+                  `\n\n**New Balance:** ${currentBalance} Spirit Coins`
+              );
+
+            await message.channel.send({ embeds: [bustEmbed] });
             await gameMessage.edit({ components: [buildActionRow(true)] });
             return;
           }
@@ -567,61 +722,104 @@ export default {
             dealerHand = smartDealerMove(dealerHand, deck);
             let dealerTotal = botCheatAdjustment(dealerHand);
             let winAmount = 0;
-            let resultMessage = "";
+            let resultEmbed;
 
-            if (dealerTotal > 21 || playerTotal > dealerTotal) {
+            // Handle different game outcomes
+            if (dealerTotal > 21) {
+              // Dealer busted
               winAmount = playerDoubled ? bet * 2 : bet;
-              resultMessage = `Victory is yours! Dealer's total: **${dealerTotal}**. You win ${winAmount} Spirit Coins.`;
+              resultEmbed = new EmbedBuilder()
+                .setColor("#00CC00")
+                .setTitle("The Dealer Busts!")
+                .setDescription(
+                  '"Impossible!" mutters the dealer, sweat beading on his brow.\n\n' +
+                    `The dealer's hand of ${dealerHand
+                      .map((card) => `\`${card.code}\``)
+                      .join(" ")} totals **${dealerTotal}** - a bust!` +
+                    `\n\nYou win **${winAmount} Spirit Coins**!`
+                );
+            } else if (playerTotal > dealerTotal) {
+              // Player wins
+              winAmount = playerDoubled ? bet * 2 : bet;
+              resultEmbed = new EmbedBuilder()
+                .setColor("#00CC00")
+                .setTitle("Victory!")
+                .setDescription(
+                  '"How... fortunate for you," the dealer says through gritted teeth.\n\n' +
+                    `Your **${playerTotal}** beats the dealer's **${dealerTotal}**.` +
+                    `\n\nYou win **${winAmount} Spirit Coins**!`
+                );
             } else if (playerTotal < dealerTotal) {
+              // Dealer wins
               winAmount = playerDoubled ? -bet * 2 : -bet;
-              resultMessage = `Alas! Dealer's total: **${dealerTotal}**. You lose ${Math.abs(
-                winAmount
-              )} Spirit Coins.`;
+              resultEmbed = new EmbedBuilder()
+                .setColor("#CC0000")
+                .setTitle("Defeat")
+                .setDescription(
+                  "The dealer's smile widens as he reveals his cards.\n\n" +
+                    `Your **${playerTotal}** loses to the dealer's **${dealerTotal}**.` +
+                    `\n\nYou lose **${Math.abs(winAmount)} Spirit Coins**.`
+                );
             } else {
+              // Push
               winAmount = 0;
-              resultMessage = `It's a push! Both total **${playerTotal}**. Your bet is returned.`;
+              resultEmbed = new EmbedBuilder()
+                .setColor("#CCCC00")
+                .setTitle("Push")
+                .setDescription(
+                  '"A tie. How... anticlimactic," the dealer sighs.\n\n' +
+                    `Both you and the dealer have **${playerTotal}**.` +
+                    `\n\nYour bet is returned.`
+                );
             }
 
+            // Handle insurance payout
             if (
               dealerHand.length === 2 &&
               dealerTotal === 21 &&
               insuranceBet > 0
             ) {
-              resultMessage += `\nInsurance pays out ${
-                insuranceBet * 2
-              } Spirit Coins.`;
-              winAmount += insuranceBet * 2;
+              const insurancePayout = insuranceBet * 2;
+              winAmount += insurancePayout;
+              resultEmbed.setDescription(
+                resultEmbed.data.description +
+                  `\n\n**Insurance pays out ${insurancePayout} Spirit Coins!**`
+              );
             }
 
-            userProfile.balance += winAmount;
+            // Update balance and display final hands
+            currentBalance += winAmount;
             await profileSchema.findOneAndUpdate(
               { userid: message.author.id },
-              { balance: userProfile.balance }
+              { balance: currentBalance }
             );
+
+            resultEmbed.addFields([
+              {
+                name: "Your Hand",
+                value: `${playerHand
+                  .map((card) => `\`${card.code}\``)
+                  .join(" ")} (Total: **${playerTotal}**)`,
+                inline: true,
+              },
+              {
+                name: "Dealer's Hand",
+                value: `${dealerHand
+                  .map((card) => `\`${card.code}\``)
+                  .join(" ")} (Total: **${dealerTotal}**)`,
+                inline: true,
+              },
+              {
+                name: "Result",
+                value: `**New Balance:** ${currentBalance} Spirit Coins`,
+                inline: false,
+              },
+            ]);
 
             // End the gambling session when game completes
             client.endGamblingSession(message.author.id);
 
-            const finalEmbed = new EmbedBuilder()
-              .setColor(
-                winAmount > 0
-                  ? "#00ff00"
-                  : winAmount < 0
-                  ? "#ff0000"
-                  : "#ffff00"
-              )
-              .setTitle("Devious Dealer Outcome")
-              .setDescription(
-                `**Your Final Hand:** ${playerHand
-                  .map((card) => `\`${card.code}\``)
-                  .join(" ")} (Total: **${playerTotal}**)\n` +
-                  `**Dealer's Hand:** ${dealerHand
-                    .map((card) => `\`${card.code}\``)
-                    .join(" ")} (Total: **${dealerTotal}**)\n\n` +
-                  resultMessage +
-                  `\n**New Balance:** ${userProfile.balance} Spirit Coins`
-              );
-            await message.channel.send({ embeds: [finalEmbed] });
+            await message.channel.send({ embeds: [resultEmbed] });
             await gameMessage.edit({ components: [buildActionRow(true)] });
           }
 
@@ -629,10 +827,15 @@ export default {
             // End the gambling session on error
             client.endGamblingSession(message.author.id);
 
-            await message.channel.send({
-              content:
-                "An error occurred, ending the game. Your balance remains unchanged.",
-            });
+            const errorEmbed = new EmbedBuilder()
+              .setColor("#880000")
+              .setTitle("Game Interrupted")
+              .setDescription(
+                "The dealer frowns as a commotion breaks out in the casino.\n\n" +
+                  '"We\'ll have to continue this another time. Your bet is safe with me... for now."'
+              );
+
+            await message.channel.send({ embeds: [errorEmbed] });
             await gameMessage.edit({ components: [buildActionRow(true)] });
           }
         } catch (err) {
