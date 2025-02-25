@@ -1,24 +1,21 @@
 import { EmbedBuilder } from "discord.js";
 import { initInviteTracker } from "../utils/inviteTracker.js";
 
-// The channel ID where invite logs should be sent.
 const LOG_CHANNEL_ID = "901818838381891624";
 
 /**
- * Initializes the invite tracker and sets up event listeners
- * to log invite-related events to the specified channel.
- * @param {import("discord.js").Client} client - Your Discord client.
+ * Sets up invite tracking and logs invite events to a designated channel.
+ * @param {import("discord.js").Client} client
  */
 export default (client) => {
-  // Initialize the invite tracker.
   const tracker = initInviteTracker(client, {
     fetchGuilds: true,
     fetchVanity: true,
   });
 
-  // When a new member joins, log the invite used.
   tracker.on("guildMemberAdd", async (member, type, inviteUsed) => {
     try {
+      console.log("member add initialized");
       const logChannel = member.guild.channels.cache.get(LOG_CHANNEL_ID);
       if (!logChannel) return;
       let inviter = "Unknown";
@@ -39,11 +36,9 @@ export default (client) => {
     }
   });
 
-  // When an invite is created, log its creation.
   tracker.on("inviteCreated", async (invite) => {
     try {
-      const guild = invite.guild;
-      const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
+      const logChannel = invite.guild.channels.cache.get(LOG_CHANNEL_ID);
       if (!logChannel) return;
       const embed = new EmbedBuilder()
         .setTitle("Invite Created")
@@ -60,11 +55,9 @@ export default (client) => {
     }
   });
 
-  // When an invite is deleted, log its deletion.
   tracker.on("inviteDeleted", async (invite) => {
     try {
-      const guild = invite.guild;
-      const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
+      const logChannel = invite.guild.channels.cache.get(LOG_CHANNEL_ID);
       if (!logChannel) return;
       const embed = new EmbedBuilder()
         .setTitle("Invite Deleted")
