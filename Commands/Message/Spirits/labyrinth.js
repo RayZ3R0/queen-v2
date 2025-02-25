@@ -28,9 +28,10 @@ export default {
       const bet = parseInt(args[0]);
       if (isNaN(bet) || bet <= 0) {
         client.endGamblingSession(message.author.id); // Add this line
-        return message.reply({
+        message.reply({
           content: "Please provide a valid bet amount greater than 0.",
         });
+        return false;
       }
 
       // Fetch user's profile.
@@ -39,16 +40,18 @@ export default {
       });
       if (!userProfile) {
         client.endGamblingSession(message.author.id); // Add this line
-        return message.reply({
+        message.reply({
           content:
             "You do not have a profile yet. Please use the `start` command first.",
         });
+        return false;
       }
       if (userProfile.balance < bet) {
         client.endGamblingSession(message.author.id); // Add this line
-        return message.reply({
+        message.reply({
           content: `You do not have enough Spirit Coins. Your balance is \`${userProfile.balance}\`.`,
         });
+        return false;
       }
 
       // Initialize game state.

@@ -313,9 +313,10 @@ export default {
       if (isNaN(bet) || bet <= 0) {
         // End the gambling session since we're returning early
         client.endGamblingSession(message.author.id);
-        return message.reply({
+        message.reply({
           content: "Please provide a valid bet amount greater than 0.",
         });
+        return false;
       }
 
       // --- User Profile Check ---
@@ -325,17 +326,19 @@ export default {
       if (!userProfile) {
         // End the gambling session since we're returning early
         client.endGamblingSession(message.author.id);
-        return message.reply({
+        message.reply({
           content:
             "You do not have a profile yet. Please use the `start` command first.",
         });
+        return false;
       }
       if (userProfile.balance < bet) {
         // End the gambling session since we're returning early
         client.endGamblingSession(message.author.id);
-        return message.reply({
+        message.reply({
           content: `You do not have enough Spirit Coins. Your balance is \`${userProfile.balance}\`.`,
         });
+        return false;
       }
 
       // --- Game State Initialization ---

@@ -26,9 +26,10 @@ export default {
       if (isNaN(bet) || bet <= 0) {
         // End gambling session on early return
         client.endGamblingSession(message.author.id);
-        return message.reply({
+        message.reply({
           content: "Please provide a valid bet amount greater than 0.",
         });
+        return false;
       }
 
       // Get difficulty mode (default is normal)
@@ -36,10 +37,11 @@ export default {
       if (!["easy", "normal", "hard"].includes(modeArg)) {
         // End gambling session on early return
         client.endGamblingSession(message.author.id);
-        return message.reply({
+        message.reply({
           content:
             "Invalid mode provided. Please choose: easy, normal, or hard.",
         });
+        return false;
       }
 
       // Fetch user profile & validate balance
@@ -49,10 +51,11 @@ export default {
       if (!userProfile) {
         // End gambling session on early return
         client.endGamblingSession(message.author.id);
-        return message.reply({
+        message.reply({
           content:
             "You do not have a profile yet. Please use the `start` command first.",
         });
+        return false;
       }
       if (userProfile.balance < bet) {
         // End gambling session on early return
