@@ -267,11 +267,14 @@ export default {
   userPermissions: [],
   botPermissions: [],
   gambling: true,
+  autoEndGamblingSession: false, // Add this property to manage sessions manually
   run: async ({ client, message, args, prefix }) => {
     try {
       // --- Input Validation ---
       const bet = parseInt(args[0]);
       if (isNaN(bet) || bet <= 0) {
+        // End the gambling session since we're returning early
+        client.endGamblingSession(message.author.id);
         return message.reply({
           content: "Please provide a valid bet amount greater than 0.",
         });
@@ -282,12 +285,16 @@ export default {
         userid: message.author.id,
       });
       if (!userProfile) {
+        // End the gambling session since we're returning early
+        client.endGamblingSession(message.author.id);
         return message.reply({
           content:
             "You do not have a profile yet. Please use the `start` command first.",
         });
       }
       if (userProfile.balance < bet) {
+        // End the gambling session since we're returning early
+        client.endGamblingSession(message.author.id);
         return message.reply({
           content: `You do not have enough Spirit Coins. Your balance is \`${userProfile.balance}\`.`,
         });
@@ -509,6 +516,9 @@ export default {
           console.log(`Main collector ended with reason: ${reason}`);
 
           if (reason === "time") {
+            // End the gambling session when the game times out
+            client.endGamblingSession(message.author.id);
+
             await message.channel.send({
               content: "The game has timed out. Please start a new game.",
             });
@@ -525,6 +535,10 @@ export default {
               { userid: message.author.id },
               { balance: userProfile.balance }
             );
+
+            // End the gambling session when player surrenders
+            client.endGamblingSession(message.author.id);
+
             await message.channel.send({
               content: `${message.author}, you surrendered! You lose **${surrenderLoss} Spirit Coins**. New balance: ${userProfile.balance} Spirit Coins.`,
             });
@@ -538,6 +552,10 @@ export default {
               { userid: message.author.id },
               { balance: userProfile.balance }
             );
+
+            // End the gambling session when player busts
+            client.endGamblingSession(message.author.id);
+
             await message.channel.send({
               content: `${message.author}, you busted! You lose your bet of ${bet} Spirit Coins. New balance: ${userProfile.balance} Spirit Coins.`,
             });
@@ -581,6 +599,9 @@ export default {
               { balance: userProfile.balance }
             );
 
+            // End the gambling session when game completes
+            client.endGamblingSession(message.author.id);
+
             const finalEmbed = new EmbedBuilder()
               .setColor(
                 winAmount > 0
@@ -605,6 +626,9 @@ export default {
           }
 
           if (reason === "error") {
+            // End the gambling session on error
+            client.endGamblingSession(message.author.id);
+
             await message.channel.send({
               content:
                 "An error occurred, ending the game. Your balance remains unchanged.",
@@ -613,6 +637,9 @@ export default {
           }
         } catch (err) {
           console.error("Error in main collector 'end' event:", err);
+          // End the gambling session if an error occurs during end handling
+          client.endGamblingSession(message.author.id);
+
           await message.channel.send({
             content:
               "An error occurred while concluding the game. Please try again later.",
@@ -620,12 +647,18 @@ export default {
           await gameMessage.edit({ components: [buildActionRow(true)] });
         }
       });
+
+      return true; // Signal successful execution
     } catch (err) {
       console.error("Error in deviouscards command execution:", err);
+      // End the gambling session on error in the main try/catch block
+      client.endGamblingSession(message.author.id);
+
       await message.reply({
         content:
           "An error occurred while starting Devious Dealer. Please try again later.",
       });
+      return false; // Signal error execution
     }
   },
 };

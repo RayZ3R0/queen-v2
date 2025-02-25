@@ -18,29 +18,39 @@ export default {
   userPermissions: [],
   botPermissions: [],
   gambling: true,
+  autoEndGamblingSession: false, // Add this to manage session manually
 
   run: async ({ client, message, args, prefix }) => {
     try {
       // Parse bet amount from args.
       const bet = parseInt(args[0]);
-      if (isNaN(bet) || bet <= 0)
+      if (isNaN(bet) || bet <= 0) {
+        // End gambling session for early return
+        client.endGamblingSession(message.author.id);
         return message.reply({
           content: "Please provide a valid bet amount greater than 0.",
         });
+      }
 
       // Fetch the user's profile.
       const userProfile = await profileSchema.findOne({
         userid: message.author.id,
       });
-      if (!userProfile)
+      if (!userProfile) {
+        // End gambling session for early return
+        client.endGamblingSession(message.author.id);
         return message.reply({
           content:
             "You do not have a profile yet. Please use the `start` command first.",
         });
-      if (userProfile.balance < bet)
+      }
+      if (userProfile.balance < bet) {
+        // End gambling session for early return
+        client.endGamblingSession(message.author.id);
         return message.reply({
           content: `You do not have enough Spirit Coins. Your balance is \`${userProfile.balance}\`.`,
         });
+      }
 
       // Build the initial embed.
       const diceEmbed = new EmbedBuilder()
@@ -76,111 +86,132 @@ export default {
       });
 
       collector.on("collect", async (interaction) => {
-        await interaction.deferUpdate();
+        try {
+          await interaction.deferUpdate();
 
-        // Animation: Simulate the dice roll over multiple steps.
-        const animationSteps = 8;
-        for (let i = 0; i < animationSteps; i++) {
-          const userDie1 = Math.floor(Math.random() * 6) + 1;
-          const userDie2 = Math.floor(Math.random() * 6) + 1;
-          const botDie1 = Math.floor(Math.random() * 6) + 1;
-          const botDie2 = Math.floor(Math.random() * 6) + 1;
+          // Animation: Simulate the dice roll over multiple steps.
+          const animationSteps = 8;
+          for (let i = 0; i < animationSteps; i++) {
+            const userDie1 = Math.floor(Math.random() * 6) + 1;
+            const userDie2 = Math.floor(Math.random() * 6) + 1;
+            const botDie1 = Math.floor(Math.random() * 6) + 1;
+            const botDie2 = Math.floor(Math.random() * 6) + 1;
 
-          const animEmbed = new EmbedBuilder()
-            .setColor("#00aaff")
-            .setTitle("Dice Duel - Rolling...")
+            const animEmbed = new EmbedBuilder()
+              .setColor("#00aaff")
+              .setTitle("Dice Duel - Rolling...")
+              .setDescription(
+                `**You:** ${userDie1} 🎲 ${userDie2}   (Total: ${
+                  userDie1 + userDie2
+                })\n` +
+                  `**Bot:** ${botDie1} 🎲 ${botDie2}   (Total: ${
+                    botDie1 + botDie2
+                  })`
+              )
+              .setFooter({ text: "Rolling, please wait..." });
+
+            await interaction.editReply({ embeds: [animEmbed] });
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          }
+
+          // Final dice roll outcome.
+          const userRoll1 = Math.floor(Math.random() * 6) + 1;
+          const userRoll2 = Math.floor(Math.random() * 6) + 1;
+          const botRoll1 = Math.floor(Math.random() * 6) + 1;
+          const botRoll2 = Math.floor(Math.random() * 6) + 1;
+
+          const userTotal = userRoll1 + userRoll2;
+          const botTotal = botRoll1 + botRoll2;
+
+          let resultDesc =
+            `**You:** ${userRoll1} 🎲 ${userRoll2}   (Total: ${userTotal})\n` +
+            `**Bot:** ${botRoll1} 🎲 ${botRoll2}   (Total: ${botTotal})\n\n`;
+
+          let win = false;
+          let push = false;
+
+          if (userTotal > botTotal) {
+            win = true;
+            resultDesc += "Congratulations, you win this duel! 🎉";
+          } else if (userTotal < botTotal) {
+            resultDesc += "Sorry, you lost this duel. Better luck next time!";
+          } else {
+            push = true;
+            resultDesc += "It's a tie! Your bet is returned.";
+          }
+
+          let newBalance = userProfile.balance;
+          let winAmount = 0;
+          if (win) {
+            winAmount = bet * 2;
+            newBalance += winAmount - bet;
+          } else if (push) {
+            // Do nothing; balance remains unchanged.
+          } else {
+            newBalance -= bet;
+          }
+
+          // Update the user's profile.
+          await profileSchema.findOneAndUpdate(
+            { userid: message.author.id },
+            { balance: Math.ceil(newBalance) }
+          );
+
+          const resultEmbed = new EmbedBuilder()
+            .setTitle("Dice Duel - Result")
+            .setColor(win ? "#00ff00" : push ? "#ffff00" : "#ff0000")
             .setDescription(
-              `**You:** ${userDie1} 🎲 ${userDie2}   (Total: ${
-                userDie1 + userDie2
-              })\n` +
-                `**Bot:** ${botDie1} 🎲 ${botDie2}   (Total: ${
-                  botDie1 + botDie2
-                })`
+              resultDesc +
+                `\n\n**New Balance:** ${Math.ceil(newBalance)} Spirit Coins`
             )
-            .setFooter({ text: "Rolling, please wait..." });
+            .setFooter({ text: "Thanks for playing!" });
 
-          await interaction.editReply({ embeds: [animEmbed] });
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          // Disable the button.
+          const disabledRow = ActionRowBuilder.from(row).setComponents(
+            ButtonBuilder.from(rollButton).setDisabled(true)
+          );
+
+          await interaction.editReply({
+            embeds: [resultEmbed],
+            components: [disabledRow],
+          });
+
+          // End the gambling session after a successful game
+          client.endGamblingSession(message.author.id);
+
+          collector.stop();
+        } catch (err) {
+          console.error("Error in dice roll collection:", err);
+          // End gambling session if there's an error during gameplay
+          client.endGamblingSession(message.author.id);
+          await message.channel.send(
+            "An error occurred during gameplay. Your bet has been returned."
+          );
         }
-
-        // Final dice roll outcome.
-        const userRoll1 = Math.floor(Math.random() * 6) + 1;
-        const userRoll2 = Math.floor(Math.random() * 6) + 1;
-        const botRoll1 = Math.floor(Math.random() * 6) + 1;
-        const botRoll2 = Math.floor(Math.random() * 6) + 1;
-
-        const userTotal = userRoll1 + userRoll2;
-        const botTotal = botRoll1 + botRoll2;
-
-        let resultDesc =
-          `**You:** ${userRoll1} 🎲 ${userRoll2}   (Total: ${userTotal})\n` +
-          `**Bot:** ${botRoll1} 🎲 ${botRoll2}   (Total: ${botTotal})\n\n`;
-
-        let win = false;
-        let push = false;
-
-        if (userTotal > botTotal) {
-          win = true;
-          resultDesc += "Congratulations, you win this duel! 🎉";
-        } else if (userTotal < botTotal) {
-          resultDesc += "Sorry, you lost this duel. Better luck next time!";
-        } else {
-          push = true;
-          resultDesc += "It's a tie! Your bet is returned.";
-        }
-
-        let newBalance = userProfile.balance;
-        let winAmount = 0;
-        if (win) {
-          winAmount = bet * 2;
-          newBalance += winAmount - bet;
-        } else if (push) {
-          // Do nothing; balance remains unchanged.
-        } else {
-          newBalance -= bet;
-        }
-
-        // Update the user's profile.
-        await profileSchema.findOneAndUpdate(
-          { userid: message.author.id },
-          { balance: Math.ceil(newBalance) }
-        );
-
-        const resultEmbed = new EmbedBuilder()
-          .setTitle("Dice Duel - Result")
-          .setColor(win ? "#00ff00" : push ? "#ffff00" : "#ff0000")
-          .setDescription(
-            resultDesc +
-              `\n\n**New Balance:** ${Math.ceil(newBalance)} Spirit Coins`
-          )
-          .setFooter({ text: "Thanks for playing!" });
-
-        // Disable the button.
-        const disabledRow = ActionRowBuilder.from(row).setComponents(
-          ButtonBuilder.from(rollButton).setDisabled(true)
-        );
-
-        await interaction.editReply({
-          embeds: [resultEmbed],
-          components: [disabledRow],
-        });
-
-        collector.stop();
       });
 
-      collector.on("end", (collected) => {
+      collector.on("end", (collected, reason) => {
         if (collected.size === 0) {
+          // End gambling session if the user doesn't roll in time
+          client.endGamblingSession(message.author.id);
+
           diceEmbed.setDescription(
             "You did not roll in time. Please try again."
           );
           initialMessage.edit({ embeds: [diceEmbed], components: [] });
         }
       });
+
+      return true; // Signal successful execution
     } catch (error) {
       console.error("Dice Duel error:", error);
-      return message.channel.send(
+      // End gambling session on error
+      client.endGamblingSession(message.author.id);
+
+      await message.channel.send(
         "An error occurred while playing Dice Duel. Please try again later."
       );
+      return false; // Signal error execution
     }
   },
 };

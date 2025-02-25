@@ -138,7 +138,7 @@ export default {
           },
           {
             name: "Cooldown",
-            value: command.timeout ? `${command.timeout}s` : "None",
+            value: command.cooldown ? `${command.cooldown}s` : "None",
             inline: false,
           },
           {
