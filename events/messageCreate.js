@@ -1,10 +1,6 @@
 import { getCooldown, setCooldown } from "../handlers/functions.js";
 import { client } from "../bot.js";
 
-/**
- * Event listener for when a message is created.
- * @param {Message} message - The message object received from Discord.
- */
 client.on("messageCreate", async (message) => {
   try {
     // Ignore bot messages or messages outside a guild context
@@ -30,10 +26,6 @@ client.on("messageCreate", async (message) => {
       }
     }
 
-    // Find the command by name or alias.
-    /**
-     * @type {import("../index.js").Mcommand}
-     */
     const command =
       client.mcommands.get(cmd) ||
       client.mcommands.find(
@@ -102,7 +94,7 @@ client.on("messageCreate", async (message) => {
       );
     }
 
-    // If the command is gambling, check if the user is already in a session.
+    // Check for gambling command and handle session
     let isGamblingCommand = command.gambling === true;
     if (isGamblingCommand) {
       if (client.activeGambleSessions.has(message.author.id)) {
@@ -111,8 +103,8 @@ client.on("messageCreate", async (message) => {
           "You already have an active gambling session. Please finish it before starting a new one."
         );
       }
-      // Mark the user as active.
-      client.activeGambleSessions.add(message.author.id);
+      // Start the gambling session with automatic timeout
+      client.startGamblingSession(message.author.id, message);
     }
 
     try {
@@ -133,9 +125,11 @@ client.on("messageCreate", async (message) => {
         "An error occurred while executing that command. The cooldown will not be applied."
       );
     } finally {
-      // If it was a gambling command, remove the active session flag.
-      if (isGamblingCommand) {
-        client.activeGambleSessions.delete(message.author.id);
+      // If it was a gambling command, end the session
+      // Notice we don't automatically end it here anymore!
+      // The command itself should call client.endGamblingSession when done
+      if (isGamblingCommand && command.autoEndGamblingSession !== false) {
+        client.endGamblingSession(message.author.id);
       }
     }
   } catch (error) {
@@ -146,11 +140,6 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-/**
- * Escapes special characters in a string to create a regex pattern.
- * @param {string} newPrefix - The string to escape.
- * @returns {string} The escaped string.
- */
 function escapeRegex(newPrefix) {
   return newPrefix?.replace(/[.*+?^${}()|[\]\\]/g, `\\$&`);
 }

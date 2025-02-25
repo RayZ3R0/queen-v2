@@ -21,11 +21,13 @@ export default {
   userPermissions: [],
   botPermissions: [],
   gambling: true,
+  autoEndGamblingSession: false,
   run: async ({ client, message, args, prefix }) => {
     try {
       // Parse bet.
       const bet = parseInt(args[0]);
       if (isNaN(bet) || bet <= 0) {
+        client.endGamblingSession(message.author.id); // Add this line
         return message.reply({
           content: "Please provide a valid bet amount greater than 0.",
         });
@@ -36,12 +38,14 @@ export default {
         userid: message.author.id,
       });
       if (!userProfile) {
+        client.endGamblingSession(message.author.id); // Add this line
         return message.reply({
           content:
             "You do not have a profile yet. Please use the `start` command first.",
         });
       }
       if (userProfile.balance < bet) {
+        client.endGamblingSession(message.author.id); // Add this line
         return message.reply({
           content: `You do not have enough Spirit Coins. Your balance is \`${userProfile.balance}\`.`,
         });
@@ -346,6 +350,8 @@ export default {
         collector.on("end", async (collected, reason) => {
           if ((reason === "time" || collected.size === 0) && gameActive) {
             gameActive = false;
+            client.endGamblingSession(message.author.id);
+
             await message.channel.send(
               `${message.author}, the labyrinth twists into nothingness as time runs out.`
             );
@@ -361,6 +367,9 @@ export default {
           { userid: message.author.id },
           { balance: newBalance }
         );
+
+        client.endGamblingSession(message.author.id);
+
         const cashOutEmbed = new EmbedBuilder()
           .setColor("#00ff00")
           .setTitle("Labyrinth Exit")
@@ -382,6 +391,8 @@ export default {
         riskyLabel,
         mysteriousLabel
       ) => {
+        client.endGamblingSession(message.author.id);
+
         const trapEmbed = new EmbedBuilder()
           .setColor("#ff0000")
           .setTitle("A Trap is Triggered!")
@@ -413,6 +424,8 @@ export default {
       await presentRound(currentRound);
     } catch (error) {
       console.error("Labyrinth error:", error);
+      client.endGamblingSession(message.author.id);
+
       return message.channel.send({
         content:
           "An error occurred while venturing into the Lucky Labyrinth. Please try again later.",

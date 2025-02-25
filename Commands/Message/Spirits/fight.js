@@ -57,6 +57,7 @@ export default {
   userPermissions: [],
   botPermissions: [],
   category: "Spirits",
+  owneronly: true,
   run: async ({ client, message, args, prefix }) => {
     // Determine enemy user.
     const enemyUser = message.mentions.users.first() || message.author;

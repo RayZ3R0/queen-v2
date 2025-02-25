@@ -2,7 +2,6 @@ import ticketSystem from "../../../utils/ticketSystem.js";
 
 export default {
   name: "ticket",
-  aliases: [""],
   cooldown: 3,
   description: "Sets a user's level to a specified value (Dev Only).",
   userPermissions: ["Administrator"],
