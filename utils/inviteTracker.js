@@ -1,9 +1,5 @@
-import {
-  EventEmitter,
-  Collection,
-  GuildFeature,
-  PermissionFlagsBits,
-} from "discord.js";
+import { EventEmitter } from "node:events";
+import { Collection, GuildFeature, PermissionFlagsBits } from "discord.js";
 import InviteData from "../schema/inviteData.js"; // Mongoose invite data model
 
 /**
@@ -25,13 +21,13 @@ class InviteTracker extends EventEmitter {
     this.client = client;
     this.options = { fetchGuilds: true, fetchVanity: true, ...options };
 
-    // Collections mapping guild ID to a Collection of invites data.
+    // Collections mapping guild ID to a Collection of simplified invites.
     this.invitesCache = new Collection();
     // For storing vanity invite data per guild.
     this.vanityCache = new Collection();
     this.cacheFetched = false;
 
-    // If we are to fetch invites on startup
+    // If we are to fetch invites on startup...
     if (this.options.fetchGuilds) {
       if (client.isReady()) {
         this.fetchAllGuildInvites().then(() => {
@@ -47,7 +43,7 @@ class InviteTracker extends EventEmitter {
       }
     }
 
-    // Bind event listeners
+    // Bind event listeners.
     client.on("guildMemberAdd", (member) => this.handleGuildMemberAdd(member));
     client.on("inviteCreate", (invite) => this.handleInviteCreate(invite));
     client.on("inviteDelete", (invite) => this.handleInviteDelete(invite));
@@ -162,7 +158,7 @@ class InviteTracker extends EventEmitter {
   }
 
   /**
-   * Handle invite deletion: mark it as deleted and remove from cache.
+   * Handle invite deletion: mark it and remove from cache.
    * @param {import("discord.js").Invite} invite
    */
   async handleInviteDelete(invite) {
@@ -193,7 +189,7 @@ class InviteTracker extends EventEmitter {
     } catch (error) {
       currentInvites = new Collection();
     }
-    // Normalize current invites.
+    // Simplify current invites.
     const currentData = new Collection();
     currentInvites.forEach((invite) => {
       currentData.set(invite.code, {
@@ -208,7 +204,7 @@ class InviteTracker extends EventEmitter {
     });
     const cachedInvites = this.invitesCache.get(guild.id) || new Collection();
 
-    // Update the stored cache with the latest invites.
+    // Update stored cache with the latest invites.
     this.invitesCache.set(guild.id, currentData);
 
     // Compare cached vs. current invites.
@@ -233,7 +229,7 @@ class InviteTracker extends EventEmitter {
     }
     // Update the database with invite tracking data.
     await this.updateInviteDatabase(member, type, inviteUsed);
-    // Emit an event with member, type ("vanity", "normal", or "unknown"), and invite details if available.
+    // Emit an event with the member, type ("vanity", "normal", or "unknown"), and invite details if available.
     this.emit("guildMemberAdd", member, type, inviteUsed);
   }
 
@@ -247,10 +243,8 @@ class InviteTracker extends EventEmitter {
     try {
       const guildId = member.guild.id;
       if (type === "normal" && inviteUsed) {
-        // Use the inviter ID from the invite data.
         const inviterId = inviteUsed.inviter;
         if (!inviterId) return;
-        // Update (or create) document for this guild/inviter pair.
         await InviteData.findOneAndUpdate(
           { guildId, inviterId },
           {
@@ -262,7 +256,6 @@ class InviteTracker extends EventEmitter {
           { upsert: true, new: true }
         );
       } else if (type === "vanity") {
-        // For vanity invites, store them under a special inviter ID.
         const inviterId = "vanity";
         await InviteData.findOneAndUpdate(
           { guildId, inviterId },
@@ -275,7 +268,6 @@ class InviteTracker extends EventEmitter {
           { upsert: true, new: true }
         );
       }
-      // For unknown type, do nothing.
     } catch (error) {
       console.error("Error updating invite database:", error);
     }
