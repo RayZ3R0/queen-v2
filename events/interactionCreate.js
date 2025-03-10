@@ -1,5 +1,9 @@
 import { InteractionType } from "discord.js";
 import { client } from "../bot.js";
+import {
+  validatePermissions,
+  handleCommandError,
+} from "../utils/permissionHandler.js";
 
 /**
  * Handles interaction events, such as slash commands.
@@ -7,65 +11,52 @@ import { client } from "../bot.js";
  */
 client.on("interactionCreate", async (interaction) => {
   try {
-    // Ignore interactions from bots or outside of guilds
-    if (interaction.user.bot || !interaction.guild) return;
+    // Ignore interactions from bots
+    if (interaction.user.bot) return;
 
-    // Check if the interaction is a command
-    if (interaction.type == InteractionType.ApplicationCommand) {
-      // Get the command object from the command collection
+    // Handle slash commands
+    if (interaction.type === InteractionType.ApplicationCommand) {
+      // Get the command object from the collection
       const command = client.scommands.get(interaction.commandName);
 
       // If command not found, respond with error message
       if (!command) {
-        return client.send(interaction, {
-          content: `\`${interaction.commandName}\` is not a valid command !!`,
+        return interaction.reply({
+          content: `\`${interaction.commandName}\` is not a valid command!`,
           ephemeral: true,
         });
       }
 
-      // Extract member and command permissions
-      const { member, guild } = interaction;
-      const { userPermissions, botPermissions } = command;
-
-      // Check user permissions
-      const missingUserPerms = userPermissions.filter(
-        (perm) => !member.permissions.has(perm)
-      );
-      if (missingUserPerms.length > 0) {
-        await client.sendEmbed(
-          interaction,
-          `You are missing the following permissions: \`${missingUserPerms.join(
-            ", "
-          )}\``
-        );
-        return;
+      // Validate permissions using enhanced system
+      const validationResult = validatePermissions(interaction, command);
+      if (!validationResult.hasPermission) {
+        return interaction.reply({
+          content: `❌ ${validationResult.error}`,
+          ephemeral: true,
+        });
       }
 
-      // Check bot permissions
-      const missingBotPerms = botPermissions.filter(
-        (perm) => !guild.members.me.permissions.has(perm)
-      );
-      if (missingBotPerms.length > 0) {
-        await client.sendEmbed(
-          interaction,
-          `I am missing the following permissions: \`${missingBotPerms.join(
-            ", "
-          )}\``
-        );
-        return;
-      }
-
-      // Run the command
-      await command.run({ client, interaction });
+      // Run the command with error handling
+      await command.run({ client, interaction }).catch((error) => {
+        handleCommandError(interaction, error);
+      });
     }
   } catch (error) {
-    // Log any errors that occur
+    // Handle any unexpected errors
     console.error("An error occurred in interactionCreate event:", error);
+    try {
+      const errorMessage = {
+        content: "❌ An unexpected error occurred. Please try again later.",
+        ephemeral: true,
+      };
 
-    // Send a generic error message to the user
-    await client.sendEmbed(
-      interaction,
-      "An error occurred while processing your command. Please try again later."
-    );
+      if (interaction.deferred) {
+        await interaction.editReply(errorMessage);
+      } else {
+        await interaction.reply(errorMessage);
+      }
+    } catch (err) {
+      console.error("Error sending error message:", err);
+    }
   }
 });
