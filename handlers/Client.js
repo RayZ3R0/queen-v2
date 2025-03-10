@@ -19,6 +19,8 @@ export class Bot extends Client {
         Partials.GuildMember,
         Partials.Message,
         Partials.User,
+        Partials.Reaction,
+        Partials.ThreadMember,
       ],
       intents: [
         GatewayIntentBits.Guilds,
@@ -26,6 +28,9 @@ export class Bot extends Client {
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildPresences,
+        GatewayIntentBits.GuildWebhooks,
+        GatewayIntentBits.GuildEmojisAndStickers,
       ],
       shards: "auto",
       failIfNotExists: false,
@@ -88,8 +93,17 @@ export class Bot extends Client {
   }
 
   async build(token) {
-    await loadHandlers(this);
-    this.login(token);
+    try {
+      // Login first to ensure we have a valid client
+      await this.login(token);
+      console.log("> ✅ Bot logged in successfully");
+
+      // Load handlers after successful login
+      await loadHandlers(this);
+    } catch (error) {
+      console.error("❌ Error during bot initialization:", error);
+      process.exit(1);
+    }
   }
 
   // Remaining methods unchanged
@@ -126,8 +140,29 @@ export class Bot extends Client {
 }
 
 async function loadHandlers(client) {
-  ["messageHandler", "slashHandler", "eventHandler"].forEach(async (file) => {
-    let handler = await import(`./${file}.js`).then((r) => r.default);
-    await handler(client);
-  });
+  try {
+    // Load event handler first
+    const eventHandler = await import("./eventHandler.js").then(
+      (r) => r.default
+    );
+    await eventHandler(client);
+    console.log("> ✅ Event handler loaded");
+
+    // Load message handler
+    const messageHandler = await import("./messageHandler.js").then(
+      (r) => r.default
+    );
+    await messageHandler(client);
+    console.log("> ✅ Message handler loaded");
+
+    // Load slash handler last to ensure everything else is ready
+    const slashHandler = await import("./slashHandler.js").then(
+      (r) => r.default
+    );
+    await slashHandler(client);
+    console.log("> ✅ Slash handler loaded");
+  } catch (error) {
+    console.error("❌ Error loading handlers:", error);
+    throw error;
+  }
 }

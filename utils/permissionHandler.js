@@ -55,7 +55,7 @@ export const checkRoleHierarchy = (executor, target, interaction) => {
  * @param {Object} command - The command object
  * @returns {Object} Validation result with status and error message if any
  */
-export const validatePermissions = (interaction, command) => {
+export const validatePermissions = (interaction, command = {}) => {
   const validationResult = {
     hasPermission: true,
     error: null,
@@ -68,9 +68,13 @@ export const validatePermissions = (interaction, command) => {
     return validationResult;
   }
 
+  // Set default permissions if not specified
+  const botPermissions = command.botPermissions || [];
+  const memberPermissions = command.memberPermissions || [];
+
   // Check bot permissions
   const botMember = interaction.guild.members.me;
-  const missingBotPerms = command.botPermissions.filter(
+  const missingBotPerms = botPermissions.filter(
     (perm) => !botMember.permissions.has(perm)
   );
 
@@ -83,7 +87,7 @@ export const validatePermissions = (interaction, command) => {
   }
 
   // Check member permissions
-  const missingMemberPerms = command.memberPermissions.filter(
+  const missingMemberPerms = memberPermissions.filter(
     (perm) => !interaction.member.permissions.has(perm)
   );
 
