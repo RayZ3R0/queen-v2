@@ -19,8 +19,8 @@ client.on("messageCreate", async (message) => {
   try {
     // Ignore bots, exempt channels and owners.
     if (message.author.bot) return;
-    // if (ownerIds.includes(message.author.id)) return;
-    // if (exemptChannelIds.includes(message.channel.id)) return;
+    if (ownerIds.includes(message.author.id)) return;
+    if (exemptChannelIds.includes(message.channel.id)) return;
 
     // Ensure that message comes from a guild.
     if (!message.guild || !message.member) return;

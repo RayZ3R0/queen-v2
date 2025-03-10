@@ -6,15 +6,15 @@ client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
   const member = message.member;
-  //   const wordPassRole = message.guild.roles.cache.find(
-  //     (role) => role.name === "Word Pass"
-  //   );
-  //   if (wordPassRole && member.roles.cache.has(wordPassRole.id)) return;
+  const wordPassRole = message.guild.roles.cache.find(
+    (role) => role.name === "Word Pass"
+  );
+  if (wordPassRole && member.roles.cache.has(wordPassRole.id)) return;
 
-  //   const nsfwChannel = message.guild.channels.cache.find(
-  //     (chan) => chan.name === "『🔞』nsfw" || chan.name === "nsfw"
-  //   );
-  //   if (nsfwChannel && message.channel.id === nsfwChannel.id) return;
+  const nsfwChannel = message.guild.channels.cache.find(
+    (chan) => chan.name === "『🔞』nsfw" || chan.name === "nsfw"
+  );
+  if (nsfwChannel && message.channel.id === nsfwChannel.id) return;
 
   const messageWords = message.content.toLowerCase().split(" ");
   const badWords = [
