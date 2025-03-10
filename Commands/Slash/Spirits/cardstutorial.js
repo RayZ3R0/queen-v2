@@ -20,8 +20,10 @@ export default {
     .setDescription("Learn how to play the Devious Dealer card game"),
   category: "Spirits",
 
-  run: async ({ client, interaction }) => {
-    await interaction.deferReply();
+  run: async ({ client, interaction, isDeferred = false }) => {
+    if (!isDeferred) {
+      await interaction.deferReply();
+    }
 
     let currentChapter = "INTRODUCTION";
     let currentPage = 0;

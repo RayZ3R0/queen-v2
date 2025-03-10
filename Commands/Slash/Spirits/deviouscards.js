@@ -135,14 +135,17 @@ export default {
         // End gambling session if they choose tutorial
         client.endGamblingSession(interaction.user.id);
         await tutorialResponse.update({
-          content:
-            "Opening tutorial... You can start a game after with `/deviouscards`",
+          content: "Opening tutorial...",
           embeds: [],
           components: [],
         });
-        const tutorialCommand = client.slashCommands.get("cardstutorial");
+        const tutorialCommand = client.scommands.get("cardstutorial");
         if (tutorialCommand) {
-          await tutorialCommand.run({ client, interaction });
+          return tutorialCommand.run({
+            client,
+            interaction,
+            isDeferred: true,
+          });
         }
         return;
       }
@@ -450,6 +453,21 @@ export default {
 
               await sleep(getThinkingDelay("HIT_DECISION", difficulty));
               playerHand.push(deck.pop());
+              const update = renderGameState();
+              const newCard = new AttachmentBuilder(update.dealerImagePath, {
+                name: update.dealerFileName,
+              });
+
+              await gameMessage.edit({
+                embeds: [update.embed],
+                files: [newCard],
+                components: [buildActionRow()],
+              });
+
+              if (calculateHandTotal(playerHand) > 21) {
+                gameOver = true;
+                collector.stop("bust");
+              }
               break;
 
             case "stand":
@@ -477,22 +495,6 @@ export default {
 
             default:
               return;
-          }
-
-          const update = renderGameState();
-          const newCard = new AttachmentBuilder(update.dealerImagePath, {
-            name: update.dealerFileName,
-          });
-
-          await i.editReply({
-            embeds: [update.embed],
-            files: [newCard],
-            components: [buildActionRow()],
-          });
-
-          if (calculateHandTotal(playerHand) > 21) {
-            gameOver = true;
-            collector.stop("bust");
           }
         } catch (error) {
           console.error("Game action error:", error);
