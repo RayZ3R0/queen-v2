@@ -5,6 +5,7 @@ import {
   ButtonBuilder,
   WebhookClient,
   ChannelType,
+  AttachmentBuilder
 } from "discord.js";
 import chalk from "chalk";
 import winston from "winston";
