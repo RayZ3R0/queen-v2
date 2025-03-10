@@ -28,9 +28,9 @@ export default async function loadSlashCommands(client) {
           );
 
           // Validate command structure
-          if (!command?.name) {
+          if (!command?.data || !command?.run) {
             console.warn(
-              `⚠️ Command in ${cmd} is missing required 'name' property`
+              `⚠️ Command in ${cmd} is missing required 'data' or 'run' property`
             );
             continue;
           }
@@ -39,80 +39,20 @@ export default async function loadSlashCommands(client) {
           command.botPermissions = command.botPermissions || [];
           command.memberPermissions = command.memberPermissions || [];
 
-          // Validate required command properties
-          const requiredProps = ["description", "type", "run"];
-          const missingProps = requiredProps.filter((prop) => !command[prop]);
-
-          if (missingProps.length > 0) {
-            console.warn(
-              `⚠️ Command ${
-                command.name
-              } is missing required properties: ${missingProps.join(", ")}`
-            );
-            continue;
-          }
-
-          client.scommands.set(command.name, command);
-          allCommands.push(command);
-          console.log(`> ✓ Loaded slash command: ${command.name}`);
+          client.scommands.set(command.data.name, command);
+          allCommands.push(command.data.toJSON());
+          console.log(`> ✓ Loaded slash command: ${command.data.name}`);
         } catch (error) {
           console.error(`❌ Error loading command from file ${cmd}:`, error);
         }
       }
     }
 
-    // Wait for client to be ready before registering commands
-    if (!client.isReady()) {
-      console.log("> Waiting for client to be ready...");
-      await new Promise((resolve) => client.once("ready", resolve));
-    }
-
-    try {
-      console.log(`> Registering ${allCommands.length} slash commands...`);
-
-      // Clear existing commands first
-      if (Global) {
-        const existingGlobalCommands =
-          await client.application.commands.fetch();
-        console.log(
-          `> Found ${existingGlobalCommands.size} existing global commands`
-        );
-
-        await client.application.commands.set([]);
-        console.log("> Cleared existing global commands");
-
-        await client.application.commands.set(allCommands);
-        console.log("> ✅ Slash commands registered globally");
-      } else {
-        const guild = await client.guilds.fetch(GuildID);
-        if (!guild) {
-          throw new Error(`Could not find guild with ID: ${GuildID}`);
-        }
-
-        const existingGuildCommands = await guild.commands.fetch();
-        console.log(
-          `> Found ${existingGuildCommands.size} existing guild commands`
-        );
-
-        await guild.commands.set([]);
-        console.log("> Cleared existing guild commands");
-
-        await guild.commands.set(allCommands);
-        console.log(`> ✅ Slash commands registered in guild: ${guild.name}`);
-      }
-    } catch (error) {
-      console.error("❌ Error registering slash commands:", error);
-      // Try to provide more specific error information
-      if (error.code === 50001) {
-        console.error(
-          "Bot lacks 'applications.commands' scope or required permissions"
-        );
-      }
-      throw error; // Re-throw to be caught by outer try-catch
-    }
-
     console.log(
-      `> ✅ Successfully loaded and registered ${client.scommands.size} slash commands`
+      `> ✅ Successfully loaded ${client.scommands.size} slash commands into memory`
+    );
+    console.log(
+      "> Note: Use 'node deploy-commands.js' to register commands with Discord"
     );
   } catch (error) {
     console.error("❌ An error occurred while loading slash commands:", error);

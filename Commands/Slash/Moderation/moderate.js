@@ -1,6 +1,5 @@
 import {
-  ApplicationCommandType,
-  ApplicationCommandOptionType,
+  SlashCommandBuilder,
   PermissionFlagsBits,
   ActionRowBuilder,
   ButtonBuilder,
@@ -10,32 +9,27 @@ import {
 } from "discord.js";
 import { checkRoleHierarchy } from "../../../utils/permissionHandler.js";
 
-/**
- * @type {import("../../../index").Scommand}
- */
 export default {
-  name: "moderate",
-  description: "Moderate a user (kick/ban)",
-  userPermissions: [PermissionFlagsBits.BanMembers],
+  data: new SlashCommandBuilder()
+    .setName("moderate")
+    .setDescription("Moderate a user (kick/ban)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
+    .addUserOption((option) =>
+      option
+        .setName("user")
+        .setDescription("The user to moderate")
+        .setRequired(true)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("reason")
+        .setDescription("Reason for the moderation")
+        .setRequired(false)
+    ),
+  category: "Moderation",
   botPermissions: [
     PermissionFlagsBits.BanMembers,
     PermissionFlagsBits.KickMembers,
-  ],
-  category: "Moderation",
-  type: ApplicationCommandType.ChatInput,
-  options: [
-    {
-      name: "user",
-      description: "The user to moderate",
-      type: ApplicationCommandOptionType.User,
-      required: true,
-    },
-    {
-      name: "reason",
-      description: "Reason for the moderation",
-      type: ApplicationCommandOptionType.String,
-      required: false,
-    },
   ],
 
   run: async ({ client, interaction }) => {

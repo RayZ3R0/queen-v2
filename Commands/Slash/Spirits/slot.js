@@ -1,14 +1,15 @@
 import {
-  ApplicationCommandType,
-  ApplicationCommandOptionType,
+  SlashCommandBuilder,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
   ComponentType,
+  MessageFlags,
 } from "discord.js";
 import profileSchema from "../../../schema/profile.js";
 
+// Slot machine settings for different difficulties
 const DIFFICULTY_SETTINGS = {
   easy: {
     tripleSevenMultiplier: 3,
@@ -35,62 +36,42 @@ const DIFFICULTY_SETTINGS = {
 
 const SYMBOLS = ["🍒", "🍋", "🔔", "⭐", "7️⃣", "🍀"];
 
-/**
- * @type {import("../../../index").Scommand}
- */
 export default {
-  name: "slot",
-  description: "Play the slot machine with your Spirit Coins",
+  data: new SlashCommandBuilder()
+    .setName("slot")
+    .setDescription("Play the slot machine with your Spirit Coins")
+    .addIntegerOption((option) =>
+      option
+        .setName("bet")
+        .setDescription("Amount of Spirit Coins to bet")
+        .setRequired(true)
+        .setMinValue(1)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("difficulty")
+        .setDescription("Choose your difficulty mode")
+        .addChoices(
+          { name: "Easy - Higher chance, lower rewards", value: "easy" },
+          { name: "Normal - Balanced odds and rewards", value: "normal" },
+          { name: "Hard - Lower chance, higher rewards", value: "hard" }
+        )
+    ),
   category: "Spirits",
-  type: ApplicationCommandType.ChatInput,
-  options: [
-    {
-      name: "bet",
-      description: "Amount of Spirit Coins to bet",
-      type: ApplicationCommandOptionType.Integer,
-      required: true,
-      minValue: 1,
-    },
-    {
-      name: "difficulty",
-      description: "Choose your difficulty mode",
-      type: ApplicationCommandOptionType.String,
-      required: false,
-      choices: [
-        {
-          name: "Easy - Higher chance, lower rewards",
-          value: "easy",
-        },
-        {
-          name: "Normal - Balanced odds and rewards",
-          value: "normal",
-        },
-        {
-          name: "Hard - Lower chance, higher rewards",
-          value: "hard",
-        },
-      ],
-    },
-  ],
+  gambling: true,
+  autoEndGamblingSession: false,
 
   run: async ({ client, interaction }) => {
-    if (!client.gamblingEnabled) {
-      return interaction.reply({
-        content: "Gambling is currently disabled.",
-        ephemeral: true,
-      });
-    }
-
-    if (client.gamblingUsers.has(interaction.user.id)) {
+    // Start gambling session
+    if (!client.startGamblingSession(interaction.user.id, interaction)) {
       return interaction.reply({
         content:
           "You are already in a gambling session. Please finish it first.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
     await interaction.deferReply();
-    client.gamblingUsers.add(interaction.user.id);
 
     try {
       const bet = interaction.options.getInteger("bet");
@@ -104,7 +85,7 @@ export default {
       });
 
       if (!userProfile) {
-        client.gamblingUsers.delete(interaction.user.id);
+        client.endGamblingSession(interaction.user.id);
         return interaction.editReply({
           content:
             "You don't have a profile yet. Please use the `/start` command first.",
@@ -112,7 +93,7 @@ export default {
       }
 
       if (userProfile.balance < bet) {
-        client.gamblingUsers.delete(interaction.user.id);
+        client.endGamblingSession(interaction.user.id);
         return interaction.editReply({
           content: `You don't have enough Spirit Coins. Your balance is \`${userProfile.balance}\`.`,
         });
@@ -173,8 +154,7 @@ export default {
             const spinEmbed = new EmbedBuilder()
               .setColor("#00aaff")
               .setTitle("🎰 Slot Machine - Spinning...")
-              .setDescription(`**[ ${roll()} | ${roll()} | ${roll()} ]**`)
-              .setFooter({ text: "Good luck!" });
+              .setDescription(`**[ ${roll()} | ${roll()} | ${roll()} ]**`);
 
             await i.editReply({ embeds: [spinEmbed] });
             await new Promise((resolve) => setTimeout(resolve, 600));
@@ -189,7 +169,7 @@ export default {
             reels[1] === reels[2] ||
             reels[0] === reels[2];
 
-          // Calculate winnings
+          // Calculate winnings based on difficulty
           let multiplier = 0;
           let outcomeMessage = "";
 
@@ -243,8 +223,7 @@ export default {
                   : "") +
                 `Net change: **${totalChange}** Spirit Coins\n\n` +
                 `New Balance: **${newBalance}** Spirit Coins`
-            )
-            .setFooter({ text: "Thanks for playing!" });
+            );
 
           // Disable the spin button
           spinButton.setDisabled(true);
@@ -252,8 +231,12 @@ export default {
             embeds: [resultEmbed],
             components: [new ActionRowBuilder().addComponents(spinButton)],
           });
+
+          // End gambling session
+          client.endGamblingSession(interaction.user.id);
         } catch (error) {
           console.error("Error in slot spin:", error);
+          client.endGamblingSession(interaction.user.id);
           await i.editReply({
             content:
               "An error occurred while spinning. Your bet has been returned.",
@@ -263,8 +246,8 @@ export default {
       });
 
       collector.on("end", (collected, reason) => {
-        client.gamblingUsers.delete(interaction.user.id);
         if (reason === "time" && collected.size === 0) {
+          client.endGamblingSession(interaction.user.id);
           interaction.editReply({
             content: "Slot machine timed out. Try again!",
             components: [],
@@ -273,7 +256,7 @@ export default {
       });
     } catch (error) {
       console.error("Error in slot command:", error);
-      client.gamblingUsers.delete(interaction.user.id);
+      client.endGamblingSession(interaction.user.id);
       await interaction.editReply({
         content:
           "An error occurred while starting the slot machine. Please try again later.",

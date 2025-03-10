@@ -16,11 +16,8 @@ client.on("interactionCreate", async (interaction) => {
 
     // Handle slash commands
     if (interaction.type === InteractionType.ApplicationCommand) {
-      // Get the command object from the collection
       const command = client.scommands.get(interaction.commandName);
-
-      // If command not found, respond with error message
-      if (!command) {
+      if (!command?.data) {
         return interaction.reply({
           content: `\`${interaction.commandName}\` is not a valid command!`,
           ephemeral: true,

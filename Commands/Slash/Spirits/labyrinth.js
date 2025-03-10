@@ -1,11 +1,11 @@
 import {
-  ApplicationCommandType,
-  ApplicationCommandOptionType,
+  SlashCommandBuilder,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
   ComponentType,
+  MessageFlags,
 } from "discord.js";
 import profileSchema from "../../../schema/profile.js";
 import {
@@ -19,42 +19,32 @@ import {
   delay,
 } from "../../../utils/labyrinthUtils.js";
 
-/**
- * @type {import("../../../index").Scommand}
- */
 export default {
-  name: "labyrinth",
-  description: "Enter the Lucky Labyrinth and test your fortune",
+  data: new SlashCommandBuilder()
+    .setName("labyrinth")
+    .setDescription("Enter the Lucky Labyrinth and test your fortune")
+    .addIntegerOption((option) =>
+      option
+        .setName("bet")
+        .setDescription("Amount of Spirit Coins to bet")
+        .setRequired(true)
+        .setMinValue(1)
+    ),
   category: "Spirits",
-  type: ApplicationCommandType.ChatInput,
-  options: [
-    {
-      name: "bet",
-      description: "Amount of Spirit Coins to bet",
-      type: ApplicationCommandOptionType.Integer,
-      required: true,
-      minValue: 1,
-    },
-  ],
+  gambling: true,
+  autoEndGamblingSession: false,
 
   run: async ({ client, interaction }) => {
-    if (!client.gamblingEnabled) {
-      return interaction.reply({
-        content: "Gambling is currently disabled.",
-        ephemeral: true,
-      });
-    }
-
-    if (client.gamblingUsers.has(interaction.user.id)) {
+    // Start gambling session
+    if (!client.startGamblingSession(interaction.user.id, interaction)) {
       return interaction.reply({
         content:
           "You are already in a gambling session. Please finish it first.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
     await interaction.deferReply();
-    client.gamblingUsers.add(interaction.user.id);
 
     try {
       const bet = interaction.options.getInteger("bet");
@@ -64,7 +54,7 @@ export default {
 
       // Validate profile and balance
       if (!userProfile) {
-        client.gamblingUsers.delete(interaction.user.id);
+        client.endGamblingSession(interaction.user.id);
         return interaction.editReply({
           content:
             "You don't have a profile yet. Please use the `/start` command first.",
@@ -72,7 +62,7 @@ export default {
       }
 
       if (userProfile.balance < bet) {
-        client.gamblingUsers.delete(interaction.user.id);
+        client.endGamblingSession(interaction.user.id);
         return interaction.editReply({
           content: `You don't have enough Spirit Coins. Your balance is \`${userProfile.balance}\`.`,
         });
@@ -226,7 +216,7 @@ export default {
           .setFooter({ text: "Safe journeys, brave adventurer!" });
 
         await interaction.channel.send({ embeds: [cashOutEmbed] });
-        client.gamblingUsers.delete(interaction.user.id);
+        client.endGamblingSession(interaction.user.id);
       };
 
       // Handle trap outcome
@@ -247,7 +237,7 @@ export default {
           .setFooter({ text: "Fortune favors the bold... sometimes not." });
 
         await interaction.channel.send({ embeds: [trapEmbed] });
-        client.gamblingUsers.delete(interaction.user.id);
+        client.endGamblingSession(interaction.user.id);
       };
 
       // Present round options
@@ -357,13 +347,14 @@ export default {
           } catch (error) {
             console.error("Error in round interaction:", error);
             collector.stop("error");
+            client.endGamblingSession(interaction.user.id);
           }
         });
 
         collector.on("end", (collected, reason) => {
           if (reason === "time" && gameActive) {
             gameActive = false;
-            client.gamblingUsers.delete(interaction.user.id);
+            client.endGamblingSession(interaction.user.id);
 
             interaction.channel.send({
               content: `${interaction.user}, the labyrinth twists into nothingness as time runs out.`,
@@ -387,7 +378,7 @@ export default {
       await presentRound(currentRound);
     } catch (error) {
       console.error("Labyrinth error:", error);
-      client.gamblingUsers.delete(interaction.user.id);
+      client.endGamblingSession(interaction.user.id);
       await interaction.editReply({
         content:
           "An error occurred while venturing into the Lucky Labyrinth. Please try again later.",

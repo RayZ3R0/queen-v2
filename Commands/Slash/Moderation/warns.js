@@ -1,31 +1,25 @@
 import {
-  ApplicationCommandType,
+  SlashCommandBuilder,
   PermissionFlagsBits,
-  ApplicationCommandOptionType,
   EmbedBuilder,
 } from "discord.js";
 import warndb from "../../../schema/warndb.js";
 
-/**
- * @type {import("../../../index").Scommand}
- */
 export default {
-  name: "warns",
-  description: "Check the warnings of a user",
-  userPermissions: [PermissionFlagsBits.KickMembers],
+  data: new SlashCommandBuilder()
+    .setName("warns")
+    .setDescription("Check the warnings of a user")
+    .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
+    .addUserOption((option) =>
+      option
+        .setName("user")
+        .setDescription("The user to check warnings for (defaults to yourself)")
+        .setRequired(false)
+    ),
+  category: "Moderation",
   botPermissions: [
     PermissionFlagsBits.SendMessages,
     PermissionFlagsBits.EmbedLinks,
-  ],
-  category: "Moderation",
-  type: ApplicationCommandType.ChatInput,
-  options: [
-    {
-      name: "user",
-      description: "The user to check warnings for (defaults to yourself)",
-      type: ApplicationCommandOptionType.User,
-      required: false,
-    },
   ],
 
   run: async ({ client, interaction }) => {

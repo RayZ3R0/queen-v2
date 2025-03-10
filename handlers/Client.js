@@ -54,17 +54,25 @@ export class Bot extends Client {
   }
 
   // Add a method to manage gambling sessions with automatic timeout
-  startGamblingSession(userId, message) {
-    // If user already has a session, clear its timeout
+  startGamblingSession(userId, messageOrInteraction) {
+    // If user already has a session, return false
     if (this.activeGambleSessions.has(userId)) {
-      clearTimeout(this.activeGambleSessions.get(userId).timeout);
+      return false;
     }
+
+    // Determine command name and channel based on input type
+    const commandName =
+      messageOrInteraction.commandName || // Slash command
+      messageOrInteraction.content?.split(" ")[0] ||
+      "unknown"; // Message command
+
+    const channel = messageOrInteraction.channel;
 
     // Create a new timeout that will automatically clear the session after 5 minutes
     const timeout = setTimeout(() => {
       if (this.activeGambleSessions.has(userId)) {
         this.activeGambleSessions.delete(userId);
-        message.channel
+        channel
           .send(
             `<@${userId}>, your gambling session was automatically closed due to inactivity.`
           )
@@ -72,11 +80,11 @@ export class Bot extends Client {
       }
     }, 5 * 60 * 1000); // 5-minute timeout
 
-    // Store timeout ID alongside timestamp for debugging
+    // Store timeout ID alongside timestamp and command info for debugging
     this.activeGambleSessions.set(userId, {
       timeout,
       startTime: Date.now(),
-      commandName: message.content.split(" ")[0],
+      commandName: commandName,
     });
 
     return true;

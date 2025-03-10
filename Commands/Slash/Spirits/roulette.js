@@ -1,6 +1,5 @@
 import {
-  ApplicationCommandType,
-  ApplicationCommandOptionType,
+  SlashCommandBuilder,
   EmbedBuilder,
   ActionRowBuilder,
   StringSelectMenuBuilder,
@@ -8,65 +7,53 @@ import {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  MessageFlags,
 } from "discord.js";
 import profileSchema from "../../../schema/profile.js";
 
-/**
- * @type {import("../../../index").Scommand}
- */
 export default {
-  name: "roulette",
-  description: "Play roulette with your Spirit Coins",
+  data: new SlashCommandBuilder()
+    .setName("roulette")
+    .setDescription("Play roulette with your Spirit Coins")
+    .addIntegerOption((option) =>
+      option
+        .setName("bet")
+        .setDescription("Amount of Spirit Coins to bet")
+        .setRequired(true)
+        .setMinValue(1)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("type")
+        .setDescription("Type of bet to place")
+        .addChoices(
+          { name: "Red", value: "red" },
+          { name: "Black", value: "black" },
+          { name: "Green", value: "green" }
+        )
+    )
+    .addIntegerOption((option) =>
+      option
+        .setName("number")
+        .setDescription("Specific number to bet on (0-36)")
+        .setMinValue(0)
+        .setMaxValue(36)
+    ),
   category: "Spirits",
-  type: ApplicationCommandType.ChatInput,
-  options: [
-    {
-      name: "bet",
-      description: "Amount of Spirit Coins to bet",
-      type: ApplicationCommandOptionType.Integer,
-      required: true,
-      minValue: 1,
-    },
-    {
-      name: "type",
-      description: "Type of bet to place",
-      type: ApplicationCommandOptionType.String,
-      required: false,
-      choices: [
-        { name: "Red", value: "red" },
-        { name: "Black", value: "black" },
-        { name: "Green", value: "green" },
-      ],
-    },
-    {
-      name: "number",
-      description: "Specific number to bet on (0-36)",
-      type: ApplicationCommandOptionType.Integer,
-      required: false,
-      minValue: 0,
-      maxValue: 36,
-    },
-  ],
+  gambling: true,
+  autoEndGamblingSession: false,
 
   run: async ({ client, interaction }) => {
-    if (!client.gamblingEnabled) {
-      return interaction.reply({
-        content: "Gambling is currently disabled.",
-        ephemeral: true,
-      });
-    }
-
-    // Check if user is already in a gambling session
-    if (client.gamblingUsers.has(interaction.user.id)) {
+    // Start gambling session
+    if (!client.startGamblingSession(interaction.user.id, interaction)) {
       return interaction.reply({
         content:
           "You are already in a gambling session. Please finish it first.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
     await interaction.deferReply();
-    client.gamblingUsers.add(interaction.user.id);
 
     try {
       const bet = interaction.options.getInteger("bet");
@@ -79,7 +66,7 @@ export default {
       });
 
       if (!userProfile) {
-        client.gamblingUsers.delete(interaction.user.id);
+        client.endGamblingSession(interaction.user.id);
         return interaction.editReply({
           content:
             "You don't have a profile yet. Please use the `/start` command first.",
@@ -87,7 +74,7 @@ export default {
       }
 
       if (userProfile.balance < bet) {
-        client.gamblingUsers.delete(interaction.user.id);
+        client.endGamblingSession(interaction.user.id);
         return interaction.editReply({
           content: `You don't have enough Spirit Coins. Your balance is \`${userProfile.balance}\`.`,
         });
@@ -118,7 +105,8 @@ export default {
           bet,
           preselectedType,
           preselectedNumber,
-          userProfile
+          userProfile,
+          client
         );
       }
 
@@ -192,17 +180,31 @@ export default {
             if (isNaN(number) || number < 0 || number > 36) {
               await modalResponse.reply({
                 content: "Please provide a valid number between 0 and 36.",
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
               });
               collector.stop("invalid");
               return;
             }
 
             await modalResponse.deferUpdate();
-            await handleBet(interaction, bet, "number", number, userProfile);
+            await handleBet(
+              interaction,
+              bet,
+              "number",
+              number,
+              userProfile,
+              client
+            );
           } else {
             await i.deferUpdate();
-            await handleBet(interaction, bet, choice, null, userProfile);
+            await handleBet(
+              interaction,
+              bet,
+              choice,
+              null,
+              userProfile,
+              client
+            );
           }
 
           collector.stop("success");
@@ -213,8 +215,8 @@ export default {
       });
 
       collector.on("end", (_, reason) => {
-        client.gamblingUsers.delete(interaction.user.id);
         if (reason === "time") {
+          client.endGamblingSession(interaction.user.id);
           interaction.editReply({
             content: "Roulette game timed out. Try again!",
             components: [],
@@ -223,7 +225,7 @@ export default {
       });
     } catch (error) {
       console.error("Error in roulette command:", error);
-      client.gamblingUsers.delete(interaction.user.id);
+      client.endGamblingSession(interaction.user.id);
       await interaction.editReply({
         content:
           "An error occurred while playing roulette. Please try again later.",
@@ -232,7 +234,14 @@ export default {
   },
 };
 
-async function handleBet(interaction, bet, betType, number, userProfile) {
+async function handleBet(
+  interaction,
+  bet,
+  betType,
+  number,
+  userProfile,
+  client
+) {
   try {
     // Calculate winning number and color
     const winningNumber = Math.floor(Math.random() * 37);
@@ -300,8 +309,12 @@ async function handleBet(interaction, bet, betType, number, userProfile) {
       embeds: [resultEmbed],
       components: [],
     });
+
+    // End gambling session after results
+    client.endGamblingSession(interaction.user.id);
   } catch (error) {
     console.error("Error in handleBet:", error);
+    client.endGamblingSession(interaction.user.id);
     throw error;
   }
 }

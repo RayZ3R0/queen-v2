@@ -1,6 +1,5 @@
 import {
-  ApplicationCommandType,
-  ApplicationCommandOptionType,
+  SlashCommandBuilder,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
@@ -10,6 +9,7 @@ import {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  MessageFlags,
 } from "discord.js";
 import { basename } from "path";
 import profileSchema from "../../../schema/profile.js";
@@ -45,58 +45,46 @@ const safeUpdateBalance = async (userId, newBalance) => {
   return safeBalance;
 };
 
-/**
- * @type {import("../../../index").Scommand}
- */
 export default {
-  name: "deviouscards",
-  description:
-    "Play blackjack against a cunning dealer who might bend the rules",
+  data: new SlashCommandBuilder()
+    .setName("deviouscards")
+    .setDescription(
+      "Play blackjack against a cunning dealer who might bend the rules"
+    )
+    .addIntegerOption((option) =>
+      option
+        .setName("bet")
+        .setDescription("Amount of Spirit Coins to bet")
+        .setRequired(true)
+        .setMinValue(1)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("difficulty")
+        .setDescription("Choose the dealer's personality and behavior")
+        .addChoices(
+          { name: "Easy - Friendly dealer with better odds", value: "easy" },
+          {
+            name: "Normal - Classic devious dealer experience",
+            value: "normal",
+          },
+          {
+            name: "Hard - Ruthless dealer who frequently cheats",
+            value: "hard",
+          }
+        )
+    ),
   category: "Spirits",
-  type: ApplicationCommandType.ChatInput,
-  options: [
-    {
-      name: "bet",
-      description: "Amount of Spirit Coins to bet",
-      type: ApplicationCommandOptionType.Integer,
-      required: true,
-      minValue: 1,
-    },
-    {
-      name: "difficulty",
-      description: "Choose the dealer's personality and behavior",
-      type: ApplicationCommandOptionType.String,
-      required: false,
-      choices: [
-        {
-          name: "Easy - Friendly dealer with better odds",
-          value: "easy",
-        },
-        {
-          name: "Normal - Classic devious dealer experience",
-          value: "normal",
-        },
-        {
-          name: "Hard - Ruthless dealer who frequently cheats",
-          value: "hard",
-        },
-      ],
-    },
-  ],
+  gambling: true,
+  autoEndGamblingSession: false,
 
   run: async ({ client, interaction }) => {
-    if (!client.gamblingEnabled) {
-      return interaction.reply({
-        content: "Gambling is currently disabled.",
-        ephemeral: true,
-      });
-    }
-
-    if (client.gamblingUsers.has(interaction.user.id)) {
+    // Start gambling session
+    if (!client.startGamblingSession(interaction.user.id, interaction)) {
       return interaction.reply({
         content:
           "You are already in a gambling session. Please finish it first.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -144,6 +132,8 @@ export default {
       });
 
       if (tutorialResponse.customId === "view_tutorial") {
+        // End gambling session if they choose tutorial
+        client.endGamblingSession(interaction.user.id);
         await tutorialResponse.update({
           content:
             "Opening tutorial... You can start a game after with `/deviouscards`",
@@ -160,7 +150,6 @@ export default {
       await tutorialResponse.deferUpdate();
 
       // Start the game
-      client.gamblingUsers.add(interaction.user.id);
       const bet = interaction.options.getInteger("bet");
       const userProfile = await profileSchema.findOne({
         userid: interaction.user.id,
@@ -168,7 +157,7 @@ export default {
 
       // Validate profile and balance
       if (!userProfile) {
-        client.gamblingUsers.delete(interaction.user.id);
+        client.endGamblingSession(interaction.user.id);
         return interaction.editReply({
           content:
             "You don't have a profile yet. Please use the `/start` command first.",
@@ -178,7 +167,7 @@ export default {
       // Track potential maximum loss for validation
       const maxPotentialLoss = bet * 2; // Double down scenario
       if (userProfile.balance < maxPotentialLoss) {
-        client.gamblingUsers.delete(interaction.user.id);
+        client.endGamblingSession(interaction.user.id);
         return interaction.editReply({
           content:
             `You need at least ${maxPotentialLoss} Spirit Coins to play (in case of double down).\n` +
@@ -333,7 +322,7 @@ export default {
           components: [buildActionRow(true)],
         });
 
-        client.gamblingUsers.delete(interaction.user.id);
+        client.endGamblingSession(interaction.user.id);
         return;
       }
 
@@ -412,7 +401,7 @@ export default {
 
                 await modalResponse.reply({
                   content: `Insurance bet placed: ${amount} Spirit Coins`,
-                  ephemeral: true,
+                  flags: MessageFlags.Ephemeral,
                 });
               }
             }
@@ -454,7 +443,7 @@ export default {
                 await i.followUp({
                   content:
                     "You're making moves too quickly! Please wait a moment.",
-                  ephemeral: true,
+                  flags: MessageFlags.Ephemeral,
                 });
                 return;
               }
@@ -527,7 +516,7 @@ export default {
               components: [buildActionRow(true)],
             });
 
-            client.gamblingUsers.delete(interaction.user.id);
+            client.endGamblingSession(interaction.user.id);
             return;
           }
 
@@ -556,7 +545,7 @@ export default {
               embeds: [surrenderEmbed],
               components: [buildActionRow(true)],
             });
-            client.gamblingUsers.delete(interaction.user.id);
+            client.endGamblingSession(interaction.user.id);
           } else if (reason === "bust") {
             currentBalance = await safeUpdateBalance(
               interaction.user.id,
@@ -583,7 +572,7 @@ export default {
               components: [buildActionRow(true)],
             });
 
-            client.gamblingUsers.delete(interaction.user.id);
+            client.endGamblingSession(interaction.user.id);
           } else if (reason === "stand" || reason === "double") {
             await sleep(getThinkingDelay("FINAL_REVEAL", difficulty));
 
@@ -719,11 +708,11 @@ export default {
               components: [buildActionRow(true)],
             });
 
-            client.gamblingUsers.delete(interaction.user.id);
+            client.endGamblingSession(interaction.user.id);
           }
         } catch (error) {
           console.error("Game end error:", error);
-          client.gamblingUsers.delete(interaction.user.id);
+          client.endGamblingSession(interaction.user.id);
 
           const errorEmbed = new EmbedBuilder()
             .setColor("#880000")
@@ -741,7 +730,7 @@ export default {
       });
     } catch (error) {
       console.error("Devious cards error:", error);
-      client.gamblingUsers.delete(interaction.user.id);
+      client.endGamblingSession(interaction.user.id);
       await interaction.editReply({
         content: "An error occurred. Your bet has been safely returned.",
         components: [],
