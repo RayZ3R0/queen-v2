@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 
 export default {
+  name: "purge",
   data: new SlashCommandBuilder()
     .setName("purge")
     .setDescription("Delete multiple messages at once")

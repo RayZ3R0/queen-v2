@@ -1,12 +1,14 @@
 import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 
 export default {
+  name: "ping", // Adding name property to match message command
   data: new SlashCommandBuilder()
     .setName("ping")
     .setDescription("Check the bot's latency"),
   memberPermissions: ["SendMessages"],
   botPermissions: ["SendMessages", "EmbedLinks"],
   category: "Misc",
+  cooldown: 5, // Match message command cooldown
 
   run: async ({ client, interaction }) => {
     const startTime = Date.now();

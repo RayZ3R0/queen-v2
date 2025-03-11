@@ -12,6 +12,7 @@ import {
 import profileSchema from "../../../schema/profile.js";
 
 export default {
+  name: "roulette",
   data: new SlashCommandBuilder()
     .setName("roulette")
     .setDescription("Play roulette with your Spirit Coins")

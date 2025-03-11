@@ -4,6 +4,7 @@ import {
   validatePermissions,
   handleCommandError,
 } from "../utils/permissionHandler.js";
+import { getCooldown, setCooldown } from "../handlers/functions.js";
 
 /**
  * Handles interaction events, such as slash commands.
@@ -33,10 +34,39 @@ client.on("interactionCreate", async (interaction) => {
         });
       }
 
+      // Check command cooldown
+      const cd = await getCooldown(interaction, command);
+      if (cd) {
+        const totalSeconds = Math.floor(cd);
+        const days = Math.floor(totalSeconds / 86400);
+        const hours = Math.floor((totalSeconds % 86400) / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        const timeParts = [];
+        if (days) timeParts.push(`${days} day${days !== 1 ? "s" : ""}`);
+        if (hours) timeParts.push(`${hours} hour${hours !== 1 ? "s" : ""}`);
+        if (minutes)
+          timeParts.push(`${minutes} minute${minutes !== 1 ? "s" : ""}`);
+        if (seconds)
+          timeParts.push(`${seconds} second${seconds !== 1 ? "s" : ""}`);
+        const timeString = timeParts.join(" ");
+        return interaction.reply({
+          content: `You are currently on cooldown. Please wait for **${timeString}** before trying again.`,
+          ephemeral: true,
+        });
+      }
+
       // Run the command with error handling
-      await command.run({ client, interaction }).catch((error) => {
+      try {
+        await command.run({ client, interaction });
+
+        // Set cooldown after successful execution
+        if (!command.noCooldownOnFail) {
+          await setCooldown(interaction, command);
+        }
+      } catch (error) {
         handleCommandError(interaction, error);
-      });
+      }
     }
   } catch (error) {
     // Handle any unexpected errors

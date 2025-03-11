@@ -37,6 +37,7 @@ const DIFFICULTY_SETTINGS = {
 const SYMBOLS = ["🍒", "🍋", "🔔", "⭐", "7️⃣", "🍀"];
 
 export default {
+  name: "slot",
   data: new SlashCommandBuilder()
     .setName("slot")
     .setDescription("Play the slot machine with your Spirit Coins")

@@ -6,6 +6,7 @@ import {
 import warndb from "../../../schema/warndb.js";
 
 export default {
+  name: "warns",
   data: new SlashCommandBuilder()
     .setName("warns")
     .setDescription("Check the warnings of a user")

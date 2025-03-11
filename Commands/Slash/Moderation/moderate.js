@@ -10,6 +10,7 @@ import {
 import { checkRoleHierarchy } from "../../../utils/permissionHandler.js";
 
 export default {
+  name: "moderate",
   data: new SlashCommandBuilder()
     .setName("moderate")
     .setDescription("Moderate a user (kick/ban)")

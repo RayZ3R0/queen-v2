@@ -15,6 +15,7 @@ import {
 } from "../../../utils/cardsTutorialUtils.js";
 
 export default {
+  name: "cardstutorial",
   data: new SlashCommandBuilder()
     .setName("cardstutorial")
     .setDescription("Learn how to play the Devious Dealer card game"),

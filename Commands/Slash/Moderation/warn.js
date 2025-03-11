@@ -3,6 +3,7 @@ import warndb from "../../../schema/warndb.js";
 import { checkRoleHierarchy } from "../../../utils/permissionHandler.js";
 
 export default {
+  name: "warn",
   data: new SlashCommandBuilder()
     .setName("warn")
     .setDescription("Warn a user for breaking rules")

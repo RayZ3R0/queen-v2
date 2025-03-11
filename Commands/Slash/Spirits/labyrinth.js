@@ -20,6 +20,7 @@ import {
 } from "../../../utils/labyrinthUtils.js";
 
 export default {
+  name: "labyrinth",
   data: new SlashCommandBuilder()
     .setName("labyrinth")
     .setDescription("Enter the Lucky Labyrinth and test your fortune")
