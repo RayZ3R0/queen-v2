@@ -9,11 +9,11 @@ import {
 import profileSchema from "../../../schema/profile.js";
 
 export default {
-  name: "spiritlb",
+  name: "spiritleaderboard",
   category: "Spirits",
   cooldown: 30,
   data: new SlashCommandBuilder()
-    .setName("spiritlb")
+    .setName("spiritleaderboard")
     .setDescription("Check the spirit coins leaderboard."),
 
   run: async ({ client, interaction }) => {

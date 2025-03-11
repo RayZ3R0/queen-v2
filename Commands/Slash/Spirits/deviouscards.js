@@ -46,9 +46,9 @@ const safeUpdateBalance = async (userId, newBalance) => {
 };
 
 export default {
-  name: "deviouscards",
+  name: "cards",
   data: new SlashCommandBuilder()
-    .setName("deviouscards")
+    .setName("cards")
     .setDescription(
       "Play blackjack against a cunning dealer who might bend the rules"
     )

@@ -1,5 +1,6 @@
 import { ActivityType } from "discord.js";
 import { client } from "../bot.js";
+import { Logger } from "../utils/Logger.js";
 
 /**
  * Event listener for when the client becomes ready.
@@ -8,17 +9,39 @@ import { client } from "../bot.js";
  */
 client.on("ready", async () => {
   try {
-    // Log a message indicating that the client is ready
-    console.log(`> ✅ ${client.user.tag} is now online`);
+    // Show ASCII art title
+    await Logger.showTitle();
+
+    // Show initialization box
+    console.log(
+      Logger.createBox("Initialization", [
+        `[+] Connected as ${client.user.tag}`,
+        `[+] Serving ${client.guilds.cache.size} guilds`,
+        `[+] Watching ${client.users.cache.size} users`,
+      ])
+    );
 
     // Set the activity for the client
     client.user.setActivity({
-      name: `Anime`, // Set the activity name
-      type: ActivityType.Watching, // Set the activity type
+      name: `Anime`,
+      type: ActivityType.Watching,
     });
+
+    // Show connection status box
+    const guildList = client.guilds.cache.map((guild) => `  + ${guild.name}`);
+    console.log(
+      Logger.createBox("Connected Guilds", [
+        `[*] Total Guilds: ${client.guilds.cache.size}`,
+        "",
+        "Active Guilds:",
+        ...guildList,
+      ])
+    );
+
+    // Show system stats
+    console.log(Logger.showStats());
   } catch (error) {
-    // Log any errors that occur
-    console.error("An error occurred in the ready event:", error);
+    console.error("[x] An error occurred in the ready event:", error);
   }
 });
 
