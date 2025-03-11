@@ -9,7 +9,7 @@ import {
   Colors,
 } from "discord.js";
 
-// Utility function to get command description from either source
+// Utility function to get command description
 function getCommandDescription(command) {
   if (command.description) {
     return command.description;
@@ -20,7 +20,11 @@ function getCommandDescription(command) {
   return "No description available";
 }
 
-// Category icons and colors
+// Global state variables
+const collectors = new Map();
+const viewStates = new Map();
+
+// Category info configuration
 const categoryInfo = {
   Spirits: {
     emoji: "🎮",
@@ -44,6 +48,7 @@ const categoryInfo = {
   },
 };
 
+// Main command configuration
 export default {
   name: "help",
   data: new SlashCommandBuilder()
@@ -75,31 +80,42 @@ export default {
   run: async ({ client, interaction }) => {
     await interaction.deferReply();
 
+    // Clean up existing collectors for this user
+    cleanupCollectors(interaction.user.id);
+
     const category = interaction.options.getString("category");
     const commandName = interaction.options.getString("command");
 
-    // If a specific command is requested
-    if (commandName) {
-      const command = client.scommands.get(commandName);
-      if (!command) {
-        return interaction.editReply({
-          content: "❌ Command not found!",
-          ephemeral: true,
-        });
+    try {
+      if (commandName) {
+        const command = client.scommands.get(commandName);
+        if (!command) {
+          return interaction.editReply({
+            content: "❌ Command not found!",
+            ephemeral: true,
+          });
+        }
+        return await showCommandDetails(interaction, command);
       }
-      return showCommandDetails(interaction, command);
-    }
 
-    // If a category is specified
-    if (category) {
-      return showCategoryCommands(interaction, category, client.scommands);
-    }
+      if (category) {
+        return await showCategoryCommands(
+          interaction,
+          category,
+          client.scommands
+        );
+      }
 
-    // Show main help menu
-    return showMainHelp(interaction, client.scommands);
+      return await showMainHelp(interaction, client.scommands);
+    } catch (error) {
+      console.error("Error in help command:", error);
+      return interaction.editReply({
+        content: "An error occurred while processing the command.",
+        ephemeral: true,
+      });
+    }
   },
 
-  // Autocomplete handler for command names
   autocomplete: async (interaction) => {
     const focusedValue = interaction.options.getFocused().toLowerCase();
     const choices = Array.from(interaction.client.scommands.keys());
@@ -112,11 +128,29 @@ export default {
   },
 };
 
+// Utility functions for collector management
+function cleanupCollectors(userId) {
+  const existingCollector = collectors.get(userId);
+  if (existingCollector) {
+    existingCollector.stop();
+    collectors.delete(userId);
+  }
+}
+
+function registerCollector(userId, collector) {
+  cleanupCollectors(userId);
+  collectors.set(userId, collector);
+
+  // Auto cleanup after collector ends
+  collector.on("end", () => {
+    collectors.delete(userId);
+  });
+}
+
+// Main help menu display
 async function showMainHelp(interaction, commands) {
   try {
-    // Get unique categories and sort them
     const categories = [...new Set(commands.map((cmd) => cmd.category))].sort();
-
     const mainEmbed = new EmbedBuilder()
       .setColor(Colors.Blue)
       .setTitle("📚 Command Categories")
@@ -125,7 +159,6 @@ async function showMainHelp(interaction, commands) {
       )
       .setTimestamp();
 
-    // Add category fields
     categories.forEach((category) => {
       const info = categoryInfo[category] || {
         emoji: "📁",
@@ -142,7 +175,6 @@ async function showMainHelp(interaction, commands) {
       });
     });
 
-    // Create category selection menu
     const row = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId("category_select")
@@ -154,7 +186,7 @@ async function showMainHelp(interaction, commands) {
               label: category,
               value: category,
               emoji: info.emoji,
-              description: "View all " + category + " commands",
+              description: "View " + category + " commands",
             };
           })
         )
@@ -165,32 +197,24 @@ async function showMainHelp(interaction, commands) {
       components: [row],
     });
 
-    // Create collector for category selection
+    // Create and register collector
     const collector = message.createMessageComponentCollector({
       componentType: ComponentType.StringSelect,
+      filter: (i) => i.user.id === interaction.user.id,
       time: 60000,
     });
 
-    collector.on("collect", async (i) => {
-      if (i.user.id !== interaction.user.id) {
-        return i.reply({
-          content: "This menu isn't for you!",
-          ephemeral: true,
-        });
-      }
+    registerCollector(interaction.user.id, collector);
 
+    viewStates.set(interaction.user.id, { view: "main" });
+
+    collector.on("collect", async (i) => {
       try {
         await i.deferUpdate();
         const selectedCategory = i.values[0];
-        await showCategoryCommands(interaction, selectedCategory, commands, i);
+        await showCategoryCommands(interaction, selectedCategory, commands);
       } catch (error) {
         console.error("Error in category selection:", error);
-        if (!i.replied && !i.deferred) {
-          await i.reply({
-            content: "An error occurred. Please try again.",
-            ephemeral: true,
-          });
-        }
       }
     });
 
@@ -210,19 +234,14 @@ async function showMainHelp(interaction, commands) {
   }
 }
 
-async function showCategoryCommands(interaction, category, commands, i = null) {
+async function showCategoryCommands(interaction, category, commands) {
   try {
+    cleanupCollectors(interaction.user.id);
+    viewStates.set(interaction.user.id, { view: "category", category });
+
     const categoryCommands = Array.from(commands.values()).filter(
       (cmd) => cmd.category === category
     );
-
-    if (categoryCommands.length === 0) {
-      const response = {
-        content: "No commands found in this category.",
-        ephemeral: true,
-      };
-      return i ? i.editReply(response) : interaction.editReply(response);
-    }
 
     const info = categoryInfo[category] || {
       emoji: "📁",
@@ -230,13 +249,19 @@ async function showCategoryCommands(interaction, category, commands, i = null) {
       description: "Various commands",
     };
 
+    if (categoryCommands.length === 0) {
+      return await interaction.editReply({
+        content: "No commands found in this category.",
+        components: [getMainMenuButton()],
+      });
+    }
+
     const embed = new EmbedBuilder()
       .setColor(info.color)
       .setTitle(info.emoji + " " + category + " Commands")
       .setDescription(info.description)
       .setTimestamp();
 
-    // Create chunks of commands for pagination
     const itemsPerPage = 9;
     const chunks = [];
     for (let i = 0; i < categoryCommands.length; i += itemsPerPage) {
@@ -248,10 +273,9 @@ async function showCategoryCommands(interaction, category, commands, i = null) {
     function getPageEmbed(page) {
       const pageEmbed = EmbedBuilder.from(embed);
       chunks[page].forEach((cmd) => {
-        const description = getCommandDescription(cmd);
         pageEmbed.addFields({
           name: "/" + cmd.name,
-          value: description,
+          value: getCommandDescription(cmd),
           inline: false,
         });
       });
@@ -263,127 +287,137 @@ async function showCategoryCommands(interaction, category, commands, i = null) {
       return pageEmbed;
     }
 
-    // Create command selection menu for the current page
-    function getCommandMenu(page) {
+    function getNavigationRow() {
       return new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId("command_select")
-          .setPlaceholder("Select a command for details")
-          .addOptions(
-            chunks[page].map((cmd) => ({
-              label: cmd.name,
-              value: cmd.name,
-              description: getCommandDescription(cmd).slice(0, 100),
-            }))
-          )
-      );
-    }
-
-    // Create navigation buttons if needed
-    const getNavigationRow = () => {
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("prev")
-          .setLabel("Previous")
-          .setStyle(ButtonStyle.Primary)
-          .setDisabled(currentPage === 0),
-        new ButtonBuilder()
-          .setCustomId("next")
-          .setLabel("Next")
-          .setStyle(ButtonStyle.Primary)
-          .setDisabled(currentPage === chunks.length - 1),
         new ButtonBuilder()
           .setCustomId("main_menu")
           .setLabel("Main Menu")
-          .setStyle(ButtonStyle.Secondary)
+          .setStyle(ButtonStyle.Secondary),
+        ...(chunks.length > 1
+          ? [
+              new ButtonBuilder()
+                .setCustomId("prev")
+                .setLabel("Previous")
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(currentPage === 0),
+              new ButtonBuilder()
+                .setCustomId("next")
+                .setLabel("Next")
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(currentPage === chunks.length - 1),
+            ]
+          : [])
       );
-      return row;
-    };
-
-    const components = [getCommandMenu(currentPage)];
-    if (chunks.length > 1) {
-      components.push(getNavigationRow());
     }
 
-    const response = {
+    const selectRow = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId("command_select")
+        .setPlaceholder("Select a command for details")
+        .addOptions(
+          chunks[currentPage].map((cmd) => ({
+            label: cmd.name,
+            value: cmd.name,
+            description: getCommandDescription(cmd).slice(0, 100),
+          }))
+        )
+    );
+
+    await interaction.editReply({
       embeds: [getPageEmbed(currentPage)],
-      components,
-    };
+      components: [selectRow, getNavigationRow()],
+    });
 
-    const message = await (i
-      ? i.editReply(response)
-      : interaction.editReply(response));
-
-    if (chunks.length === 1 && categoryCommands.length <= 1) return;
-
-    const collector = message.createMessageComponentCollector({
+    const collector = interaction.channel.createMessageComponentCollector({
+      filter: (i) => i.user.id === interaction.user.id,
       time: 60000,
     });
 
-    collector.on("collect", async (i) => {
-      if (i.user.id !== interaction.user.id) {
-        return i.reply({
-          content: "These controls aren't for you!",
-          ephemeral: true,
-        });
-      }
+    registerCollector(interaction.user.id, collector);
 
+    collector.on("collect", async (i) => {
       try {
         await i.deferUpdate();
 
-        if (i.customId === "command_select") {
-          const command = commands.get(i.values[0]);
-          await showCommandDetails(interaction, command, i);
-        } else if (i.customId === "main_menu") {
-          await showMainHelp(interaction, commands);
-        } else {
-          if (i.customId === "prev") currentPage--;
-          else if (i.customId === "next") currentPage++;
-
-          await i.editReply({
-            embeds: [getPageEmbed(currentPage)],
-            components: [getCommandMenu(currentPage), getNavigationRow()],
-          });
+        switch (i.customId) {
+          case "command_select": {
+            const command = commands.get(i.values[0]);
+            await showCommandDetails(interaction, command);
+            break;
+          }
+          case "main_menu":
+            await showMainHelp(interaction, commands);
+            break;
+          case "prev":
+            currentPage = Math.max(0, currentPage - 1);
+            selectRow.components[0].setOptions(
+              chunks[currentPage].map((cmd) => ({
+                label: cmd.name,
+                value: cmd.name,
+                description: getCommandDescription(cmd).slice(0, 100),
+              }))
+            );
+            await interaction.editReply({
+              embeds: [getPageEmbed(currentPage)],
+              components: [selectRow, getNavigationRow()],
+            });
+            break;
+          case "next":
+            currentPage = Math.min(chunks.length - 1, currentPage + 1);
+            selectRow.components[0].setOptions(
+              chunks[currentPage].map((cmd) => ({
+                label: cmd.name,
+                value: cmd.name,
+                description: getCommandDescription(cmd).slice(0, 100),
+              }))
+            );
+            await interaction.editReply({
+              embeds: [getPageEmbed(currentPage)],
+              components: [selectRow, getNavigationRow()],
+            });
+            break;
         }
       } catch (error) {
         console.error("Error in category command interaction:", error);
-        if (!i.replied && !i.deferred) {
-          await i.reply({
-            content: "An error occurred. Please try again.",
-            ephemeral: true,
-          });
-        }
       }
     });
 
     collector.on("end", () => {
-      if (message.editable) {
-        const disabledComponents = components.map((row) => {
-          const disabledRow = ActionRowBuilder.from(row);
-          disabledRow.components.forEach((c) => c.setDisabled(true));
-          return disabledRow;
-        });
+      if (interaction.replied || interaction.deferred) {
+        const disabledRow = ActionRowBuilder.from(selectRow);
+        const disabledNav = ActionRowBuilder.from(getNavigationRow());
+        disabledRow.components.forEach((c) => c.setDisabled(true));
+        disabledNav.components.forEach((c) => c.setDisabled(true));
         interaction
-          .editReply({ components: disabledComponents })
+          .editReply({ components: [disabledRow, disabledNav] })
           .catch(() => {});
       }
     });
   } catch (error) {
     console.error("Error in showCategoryCommands:", error);
-    const errorResponse = {
+    await interaction.editReply({
       content: "An error occurred while showing category commands.",
-      ephemeral: true,
-    };
-    if (i && (i.replied || i.deferred)) {
-      await i.editReply(errorResponse);
-    } else if (interaction.replied || interaction.deferred) {
-      await interaction.editReply(errorResponse);
-    }
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("main_menu")
+            .setLabel("Main Menu")
+            .setStyle(ButtonStyle.Secondary)
+        ),
+      ],
+    });
   }
 }
 
-async function showCommandDetails(interaction, command, i = null) {
+async function showCommandDetails(interaction, command) {
   try {
+    cleanupCollectors(interaction.user.id);
+    viewStates.set(interaction.user.id, {
+      view: "command",
+      command: command.name,
+      category: command.category,
+    });
+
     const info = categoryInfo[command.category] || {
       emoji: "📁",
       color: Colors.Grey,
@@ -395,7 +429,6 @@ async function showCommandDetails(interaction, command, i = null) {
       .setDescription(getCommandDescription(command))
       .setTimestamp();
 
-    // Add cooldown info if available
     if (command.cooldown) {
       embed.addFields({
         name: "⏰ Cooldown",
@@ -404,7 +437,6 @@ async function showCommandDetails(interaction, command, i = null) {
       });
     }
 
-    // Add permissions if available
     if (command.memberPermissions?.length > 0) {
       embed.addFields({
         name: "👤 Required Permissions",
@@ -413,7 +445,6 @@ async function showCommandDetails(interaction, command, i = null) {
       });
     }
 
-    // Add options if available
     const options = command.data.options;
     if (options?.length > 0) {
       embed.addFields({
@@ -432,7 +463,6 @@ async function showCommandDetails(interaction, command, i = null) {
       });
     }
 
-    // Add category info
     embed.addFields({
       name: "📁 Category",
       value: info.emoji + " " + command.category,
@@ -443,28 +473,26 @@ async function showCommandDetails(interaction, command, i = null) {
       new ButtonBuilder()
         .setCustomId("back_to_category")
         .setLabel("Back to Category")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId("main_menu")
+        .setLabel("Main Menu")
         .setStyle(ButtonStyle.Secondary)
     );
 
-    const response = { embeds: [embed], components: [row] };
+    await interaction.editReply({
+      embeds: [embed],
+      components: [row],
+    });
 
-    const message = await (i
-      ? i.editReply(response)
-      : interaction.editReply(response));
-
-    const collector = message.createMessageComponentCollector({
-      componentType: ComponentType.Button,
+    const collector = interaction.channel.createMessageComponentCollector({
+      filter: (i) => i.user.id === interaction.user.id,
       time: 60000,
     });
 
-    collector.on("collect", async (i) => {
-      if (i.user.id !== interaction.user.id) {
-        return i.reply({
-          content: "This button isn't for you!",
-          ephemeral: true,
-        });
-      }
+    registerCollector(interaction.user.id, collector);
 
+    collector.on("collect", async (i) => {
       try {
         await i.deferUpdate();
 
@@ -474,34 +502,32 @@ async function showCommandDetails(interaction, command, i = null) {
             command.category,
             interaction.client.scommands
           );
+        } else if (i.customId === "main_menu") {
+          await showMainHelp(interaction, interaction.client.scommands);
         }
       } catch (error) {
         console.error("Error in command details interaction:", error);
-        if (!i.replied && !i.deferred) {
-          await i.reply({
-            content: "An error occurred. Please try again.",
-            ephemeral: true,
-          });
-        }
       }
     });
 
     collector.on("end", () => {
-      if (message.editable) {
+      if (interaction.replied || interaction.deferred) {
         row.components.forEach((button) => button.setDisabled(true));
         interaction.editReply({ components: [row] }).catch(() => {});
       }
     });
   } catch (error) {
     console.error("Error in showCommandDetails:", error);
-    const errorResponse = {
+    await interaction.editReply({
       content: "An error occurred while showing command details.",
-      ephemeral: true,
-    };
-    if (i && (i.replied || i.deferred)) {
-      await i.editReply(errorResponse);
-    } else if (interaction.replied || interaction.deferred) {
-      await interaction.editReply(errorResponse);
-    }
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("main_menu")
+            .setLabel("Main Menu")
+            .setStyle(ButtonStyle.Secondary)
+        ),
+      ],
+    });
   }
 }
