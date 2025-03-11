@@ -1,5 +1,8 @@
 import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
-import { Character, BattleEngine } from "../../../utils/BattleEngine.js";
+import {
+  Character,
+  InteractiveBattleEngine,
+} from "../../../utils/InteractiveBattleEngine.js";
 import profileSchema from "../../../schema/profile.js";
 import spiritSchema from "../../../schema/spirits.js";
 import fs from "fs";
@@ -31,16 +34,16 @@ const enemyDefaultStats = {
 };
 
 export default {
-  name: "fight",
+  name: "duel",
   category: "Spirits",
-  cooldown: 10,
+  cooldown: 120,
   data: new SlashCommandBuilder()
-    .setName("fight")
-    .setDescription("Battle against another spirit user!")
+    .setName("duel")
+    .setDescription("Challenge another spirit user to an interactive battle!")
     .addUserOption((option) =>
       option
         .setName("opponent")
-        .setDescription("The player to fight against (optional)")
+        .setDescription("The player to duel against (optional)")
         .setRequired(false)
     ),
 
@@ -132,25 +135,17 @@ export default {
         enemyStars
       );
 
-      // Create initial embed
-      const battleEmbed = new EmbedBuilder()
-        .setColor("#ff0000")
-        .setTitle(`${interaction.user.username} vs ${enemyUser.username}`)
-        .setDescription("Initializing battle...");
-
       // Create and start battle engine
-      const reply = await interaction.editReply({ embeds: [battleEmbed] });
-      const battle = new BattleEngine(
+      const battle = new InteractiveBattleEngine(
         playerCharacter,
         enemyCharacter,
-        battleEmbed,
-        reply
+        interaction
       );
-      await battle.start();
+      battle.start();
     } catch (error) {
-      console.error("Fight command error:", error);
+      console.error("Duel command error:", error);
       await interaction.editReply({
-        content: "An error occurred while starting the battle.",
+        content: "An error occurred while starting the duel.",
       });
     }
   },

@@ -7,12 +7,14 @@ import {
   EmbedBuilder,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
+  MessageFlags,
 } from "discord.js";
 
 const wait = promisify(setTimeout);
-const WAIT_TIME = 1000;
+const WAIT_TIME = 1500; // Reduced to 1 second
+const SHORT_WAIT = 1000; // Reduced to half second
 
-const STARMOJI = "<a:1006138461234937887:1342052087084613702>";
+const STARMOJI = "<a:starSpin:1006138461234937887>";
 const printStars = (starCount) => {
   const maxStars = 5;
   const displayCount = Math.min(starCount, maxStars);
@@ -24,7 +26,7 @@ const printStars = (starCount) => {
 export class Character {
   constructor(name, stats, abilities, user, stars) {
     this.name = name;
-    this.stats = stats; // { hp, strength, defence, agility }
+    this.stats = stats;
     this.currentHP = stats.hp;
     this.abilities = abilities;
     this.user = user;
@@ -75,7 +77,6 @@ export class InteractiveBattleEngine {
     this.turnTimeout = null;
     this.isProcessing = false;
 
-    // Decide initiative
     const totalAgility = this.player.stats.agility + this.enemy.stats.agility;
     const bias =
       ((this.player.stats.agility - this.enemy.stats.agility) / totalAgility) *
@@ -95,52 +96,39 @@ export class InteractiveBattleEngine {
 
   createActionRow(isPlayerTurn, character) {
     const row = new ActionRowBuilder();
+    const buttons = [
+      new ButtonBuilder()
+        .setCustomId("attack")
+        .setLabel("⚔️ Attack")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(!isPlayerTurn),
+      new ButtonBuilder()
+        .setCustomId("ability")
+        .setLabel("✨ Special")
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(!isPlayerTurn || character.energy < 100),
+      new ButtonBuilder()
+        .setCustomId("status")
+        .setLabel("📊 Status")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId("surrender")
+        .setLabel("🏳️ Surrender")
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(!isPlayerTurn),
+    ];
 
-    // Basic attack button
-    const attackButton = new ButtonBuilder()
-      .setCustomId("attack")
-      .setLabel("⚔️ Attack")
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(!isPlayerTurn);
-
-    // Special ability button
-    const abilityButton = new ButtonBuilder()
-      .setCustomId("ability")
-      .setLabel("✨ Special")
-      .setStyle(ButtonStyle.Success)
-      .setDisabled(!isPlayerTurn || character.energy < 100);
-
-    // Status button (always enabled)
-    const statusButton = new ButtonBuilder()
-      .setCustomId("status")
-      .setLabel("📊 Status")
-      .setStyle(ButtonStyle.Secondary);
-
-    // Surrender button
-    const surrenderButton = new ButtonBuilder()
-      .setCustomId("surrender")
-      .setLabel("🏳️ Surrender")
-      .setStyle(ButtonStyle.Danger)
-      .setDisabled(!isPlayerTurn);
-
-    row.addComponents(
-      attackButton,
-      abilityButton,
-      statusButton,
-      surrenderButton
-    );
-    return row;
+    return row.addComponents(buttons);
   }
 
   createAbilitySelectMenu(character) {
-    if (!character.abilities || character.abilities.length === 0) return null;
+    if (!character.abilities?.length || character.energy < 100) return null;
 
-    const availableAbilities = character.abilities.filter((ability) => {
-      if (ability === "Ratelibish" && character.ratebilish) return false;
-      return true;
-    });
+    const availableAbilities = character.abilities.filter(
+      (ability) => !(ability === "Ratelibish" && character.ratebilish)
+    );
 
-    if (availableAbilities.length === 0) return null;
+    if (!availableAbilities.length) return null;
 
     const menu = new StringSelectMenuBuilder()
       .setCustomId("ability_select")
@@ -161,58 +149,223 @@ export class InteractiveBattleEngine {
   }
 
   async updateBattleState(actionDetails = "") {
-    const embed = new EmbedBuilder()
-      .setColor(this.currentTurn === "player" ? "#00ff00" : "#ff0000")
-      .setTitle(`${this.player.user.username} vs ${this.enemy.user.username}`)
-      .setDescription(
-        `${actionDetails ? `${actionDetails}\n\n` : ""}
+    try {
+      const embed = new EmbedBuilder()
+        .setColor(this.currentTurn === "player" ? "#00ff00" : "#ff0000")
+        .setTitle(`${this.player.user.username} vs ${this.enemy.user.username}`)
+        .setDescription(
+          `${actionDetails ? `${actionDetails}\n\n` : ""}
 **Battle Status:**
 
 **${this.player.user.username}'s ${this.player.name}** ${printStars(
-          this.player.stars
-        )}
+            this.player.stars
+          )}
 HP: ${Math.max(0, this.player.currentHP)}/${
-          this.player.stats.hp
-        } ${this.progressBar(this.player.currentHP, this.player.stats.hp)}
+            this.player.stats.hp
+          } ${this.progressBar(this.player.currentHP, this.player.stats.hp)}
 Energy: ${this.player.energy}/100
 
 **${this.enemy.user.username}'s ${this.enemy.name}** ${printStars(
-          this.enemy.stars
-        )}
+            this.enemy.stars
+          )}
 HP: ${Math.max(0, this.enemy.currentHP)}/${
-          this.enemy.stats.hp
-        } ${this.progressBar(this.enemy.currentHP, this.enemy.stats.hp)}
+            this.enemy.stats.hp
+          } ${this.progressBar(this.enemy.currentHP, this.enemy.stats.hp)}
 Energy: ${this.enemy.energy}/100`
-      )
-      .setFooter({
-        text: `Round ${this.round} | ${
-          this.currentTurn === "player" ? "Your" : "Enemy's"
-        } turn`,
-      });
+        )
+        .setFooter({
+          text: `Round ${this.round} | ${
+            this.currentTurn === "player" ? "Your" : "Enemy's"
+          } turn`,
+        });
 
-    const components = [
-      this.createActionRow(this.currentTurn === "player", this.player),
-    ];
-    if (this.currentTurn === "player" && this.player.energy >= 100) {
-      const abilityMenu = this.createAbilitySelectMenu(this.player);
-      if (abilityMenu) components.push(abilityMenu);
+      const components = [];
+      if (this.currentTurn === "player") {
+        components.push(this.createActionRow(true, this.player));
+        const abilityMenu = this.createAbilitySelectMenu(this.player);
+        if (abilityMenu) components.push(abilityMenu);
+      }
+
+      const messageOptions = { embeds: [embed], components };
+      if (this.messageId) {
+        await this.interaction.editReply(messageOptions);
+      } else {
+        const reply = await this.interaction.editReply(messageOptions);
+        this.messageId = reply.id;
+      }
+
+      this.embed = embed;
+    } catch (error) {
+      console.error("Error updating battle state:", error);
+    }
+  }
+
+  async start() {
+    const initMsg = `Coin flip: **${
+      this.initiative === "player" ? this.player.name : this.enemy.name
+    }** goes first!`;
+    await this.updateBattleState(`Battle Start!\n${initMsg}`);
+    await wait(SHORT_WAIT);
+
+    if (this.initiative === "enemy") {
+      this.currentTurn = "enemy";
+      await this.handleEnemyTurn();
+      this.currentTurn = "player";
     }
 
-    if (this.messageId) {
-      await this.interaction.editReply({ embeds: [embed], components });
-    } else {
-      const reply = await this.interaction.editReply({
-        embeds: [embed],
-        components,
-      });
-      this.messageId = reply.id;
-    }
+    const filter = (i) => {
+      if (i.user.id !== this.player.user.id) {
+        i.reply({
+          content: "This is not your battle!",
+          flags: MessageFlags.Ephemeral,
+        });
+        return false;
+      }
+      return true;
+    };
 
-    this.embed = embed;
+    const collector = this.interaction.channel.createMessageComponentCollector({
+      filter,
+      time: 300000,
+    });
+
+    collector.on("collect", async (i) => {
+      if (this.isProcessing) {
+        await i.reply({
+          content: "Please wait for the current action to complete.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      this.isProcessing = true;
+
+      try {
+        switch (i.customId) {
+          case "attack": {
+            const damage = this.player.attack(this.enemy);
+            const actionMessage =
+              damage === -1
+                ? `**${this.enemy.name}** evaded **${this.player.name}**'s attack!`
+                : `**${this.player.name}** attacked and dealt **${damage}** damage!`;
+
+            await i.deferUpdate();
+            await this.updateBattleState(actionMessage);
+            await wait(SHORT_WAIT);
+            await this.processTurnEnd();
+            break;
+          }
+
+          case "ability":
+          case "ability_select": {
+            const ability =
+              i.customId === "ability_select" ? i.values[0] : null;
+            await this.handleAbility(i, ability);
+            break;
+          }
+
+          case "status":
+            await this.showDetailedStatus(i);
+            break;
+
+          case "surrender":
+            await this.handleSurrender(i);
+            collector.stop();
+            break;
+        }
+      } catch (error) {
+        console.error("Battle action error:", error);
+        if (!i.replied && !i.deferred) {
+          await i
+            .reply({
+              content: "An error occurred while processing your action.",
+              flags: MessageFlags.Ephemeral,
+            })
+            .catch(() => {});
+        }
+      }
+
+      this.isProcessing = false;
+    });
+
+    collector.on("end", () => {
+      if (this.player.currentHP > 0 && this.enemy.currentHP > 0) {
+        this.interaction
+          .editReply({
+            content: "Battle timed out!",
+            components: [],
+          })
+          .catch(() => {});
+      }
+    });
+  }
+
+  async handleAbility(i, selectedAbility = null) {
+    try {
+      if (this.player.energy < 100) {
+        await i.reply({
+          content: "Not enough energy to use an ability!",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      // Show ability menu if no ability selected
+      if (!selectedAbility) {
+        const menu = this.createAbilitySelectMenu(this.player);
+        if (menu) {
+          await i.reply({
+            content: "Choose your special ability:",
+            components: [menu],
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+        return;
+      }
+
+      // Use the selected ability
+      this.player.energy -= 100;
+      const damage = this.player.useAbility(selectedAbility, this.enemy);
+
+      let actionMessage;
+      if (typeof damage === "object") {
+        actionMessage = `**${this.player.name}** activated **${selectedAbility}**:\n${damage.message}`;
+      } else if (damage === -1) {
+        actionMessage = `**${this.enemy.name}** evaded **${this.player.name}**'s **${selectedAbility}**!`;
+      } else {
+        actionMessage = `**${this.player.name}** used **${selectedAbility}** and dealt **${damage}** damage!`;
+      }
+
+      if (selectedAbility === "Ratelibish") {
+        this.player.ratebilish = true;
+        this.player.abilities = this.player.abilities.filter(
+          (a) => a !== "Ratelibish"
+        );
+      }
+
+      if (i.deferred) {
+        await this.updateBattleState(actionMessage);
+      } else {
+        await i.deferUpdate();
+        await this.updateBattleState(actionMessage);
+      }
+
+      await wait(SHORT_WAIT);
+      await this.processTurnEnd();
+    } catch (error) {
+      console.error("Error handling ability:", error);
+      if (!i.replied && !i.deferred) {
+        await i
+          .reply({
+            content: "An error occurred while using the ability.",
+            flags: MessageFlags.Ephemeral,
+          })
+          .catch(() => {});
+      }
+    }
   }
 
   async handleEnemyTurn() {
-    await wait(WAIT_TIME);
     let actionMessage = "";
     let damage;
 
@@ -222,10 +375,10 @@ Energy: ${this.enemy.energy}/100`
       this.enemy.stunTurns--;
     } else if (this.enemy.energy >= 100) {
       this.enemy.energy -= 100;
-      let availableAbilities = this.enemy.abilities.filter((ability) => {
-        if (ability === "Ratelibish" && this.enemy.ratebilish) return false;
-        return true;
-      });
+      const availableAbilities =
+        this.enemy.abilities?.filter(
+          (ability) => !(ability === "Ratelibish" && this.enemy.ratebilish)
+        ) || [];
 
       let ability;
       if (
@@ -267,127 +420,8 @@ Energy: ${this.enemy.energy}/100`
     }
 
     await this.updateBattleState(actionMessage);
+    await wait(SHORT_WAIT);
     return actionMessage;
-  }
-
-  async start() {
-    await this.interaction.deferReply();
-
-    const initMsg =
-      this.initiative === "player"
-        ? `Coin flip: **${this.player.name}** goes first!`
-        : `Coin flip: **${this.enemy.name}** goes first!`;
-
-    await this.updateBattleState(`Battle Start!\n${initMsg}`);
-
-    if (this.initiative === "enemy") {
-      this.currentTurn = "enemy";
-      await this.handleEnemyTurn();
-      this.currentTurn = "player";
-    }
-
-    const filter = (i) => {
-      if (i.user.id !== this.player.user.id) {
-        i.reply({ content: "This is not your battle!", ephemeral: true });
-        return false;
-      }
-      return true;
-    };
-
-    const collector = this.interaction.channel.createMessageComponentCollector({
-      filter,
-      time: 300000, // 5 minutes
-    });
-
-    collector.on("collect", async (i) => {
-      if (this.isProcessing) {
-        await i.reply({
-          content: "Please wait for the current action to complete.",
-          ephemeral: true,
-        });
-        return;
-      }
-
-      this.isProcessing = true;
-
-      try {
-        if (i.customId === "attack") {
-          const damage = this.player.attack(this.enemy);
-          const actionMessage =
-            damage === -1
-              ? `**${this.enemy.name}** evaded **${this.player.name}**'s attack!`
-              : `**${this.player.name}** attacked and dealt **${damage}** damage!`;
-
-          await this.updateBattleState(actionMessage);
-          await this.processTurnEnd();
-        } else if (
-          i.customId === "ability" ||
-          i.customId === "ability_select"
-        ) {
-          const ability = i.customId === "ability_select" ? i.values[0] : null;
-          await this.handleAbility(i, ability);
-        } else if (i.customId === "status") {
-          await this.showDetailedStatus(i);
-        } else if (i.customId === "surrender") {
-          await this.handleSurrender(i);
-          collector.stop();
-        }
-      } catch (error) {
-        console.error("Battle action error:", error);
-        await i.reply({
-          content: "An error occurred while processing your action.",
-          ephemeral: true,
-        });
-      }
-
-      this.isProcessing = false;
-    });
-
-    collector.on("end", () => {
-      if (this.player.currentHP > 0 && this.enemy.currentHP > 0) {
-        this.interaction.editReply({
-          content: "Battle timed out!",
-          components: [],
-        });
-      }
-    });
-  }
-
-  async handleAbility(i, selectedAbility = null) {
-    if (!selectedAbility && this.player.abilities.length > 0) {
-      const menu = this.createAbilitySelectMenu(this.player);
-      if (menu) {
-        await i.reply({
-          content: "Choose your special ability:",
-          components: [menu],
-          ephemeral: true,
-        });
-        return;
-      }
-    }
-
-    this.player.energy -= 100;
-    const ability = selectedAbility || "Attack";
-    const damage = this.player.useAbility(ability, this.enemy);
-
-    let actionMessage;
-    if (typeof damage === "object") {
-      actionMessage = `**${this.player.name}** activated **${ability}**:\n${damage.message}`;
-    } else if (damage === -1) {
-      actionMessage = `**${this.enemy.name}** evaded **${this.player.name}**'s **${ability}**!`;
-    } else {
-      actionMessage = `**${this.player.name}** used **${ability}** and dealt **${damage}** damage!`;
-    }
-
-    if (ability === "Ratelibish") {
-      this.player.ratebilish = true;
-      this.player.abilities = this.player.abilities.filter(
-        (a) => a !== "Ratelibish"
-      );
-    }
-
-    await this.updateBattleState(actionMessage);
-    await this.processTurnEnd();
   }
 
   async showDetailedStatus(i) {
@@ -425,7 +459,10 @@ Status: ${this.enemy.stunTurns > 0 ? "Stunned" : "Normal"}`,
         }
       );
 
-    await i.reply({ embeds: [statusEmbed], ephemeral: true });
+    await i.reply({
+      embeds: [statusEmbed],
+      flags: MessageFlags.Ephemeral,
+    });
   }
 
   async handleSurrender(i) {
@@ -466,6 +503,7 @@ Status: ${this.enemy.stunTurns > 0 ? "Stunned" : "Normal"}`,
     this.currentTurn = "player";
 
     await this.updateBattleState(`Round ${this.round} begins!`);
+    await wait(SHORT_WAIT);
   }
 
   async endBattle() {
@@ -493,6 +531,9 @@ Status: ${this.enemy.stunTurns > 0 ? "Stunned" : "Normal"}`,
         { name: "Rounds", value: this.round.toString(), inline: true }
       );
 
-    await this.interaction.editReply({ embeds: [endEmbed], components: [] });
+    await this.interaction.editReply({
+      embeds: [endEmbed],
+      components: [],
+    });
   }
 }
