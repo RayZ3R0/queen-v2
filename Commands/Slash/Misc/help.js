@@ -9,18 +9,53 @@ import {
   Colors,
 } from "discord.js";
 
-// Utility function to get command description
-function getCommandDescription(command) {
-  if (command.description) return command.description;
-  if (command.data?.description) return command.data.description;
-  return "No description available";
-}
+// Global view state manager with improved error handling
+const viewManager = {
+  states: new Map(),
+  collectors: new Map(),
+  inTransition: new Set(), // Track users in navigation transition
 
-// Global state management
-const collectors = new Map();
-const viewStates = new Map();
+  registerView(userId, state, collector = null) {
+    this.states.set(userId, state);
+    if (collector) {
+      this.stopCollector(userId);
+      this.collectors.set(userId, collector);
+    }
+  },
 
-// Category info configuration
+  getState(userId) {
+    return this.states.get(userId);
+  },
+
+  stopCollector(userId) {
+    const collector = this.collectors.get(userId);
+    if (collector) {
+      collector.stop();
+      this.collectors.delete(userId);
+    }
+  },
+
+  cleanup(userId) {
+    this.states.delete(userId);
+    this.stopCollector(userId);
+    this.inTransition.delete(userId); // Clean up transition state
+  },
+
+  // Track when a user is navigating between views
+  setTransitioning(userId, isTransitioning) {
+    if (isTransitioning) {
+      this.inTransition.add(userId);
+    } else {
+      this.inTransition.delete(userId);
+    }
+  },
+
+  isTransitioning(userId) {
+    return this.inTransition.has(userId);
+  },
+};
+
+// Category configuration
 const categoryInfo = {
   Spirits: {
     emoji: "🎮",
@@ -69,17 +104,20 @@ export default {
         .setRequired(false)
         .setAutocomplete(true)
     ),
-
   category: "Misc",
   cooldown: 3,
 
+  // Command execution
   run: async ({ client, interaction }) => {
     await interaction.deferReply();
 
-    const category = interaction.options.getString("category");
-    const commandName = interaction.options.getString("command");
-
     try {
+      // Clean up any existing state for this user
+      viewManager.cleanup(interaction.user.id);
+
+      const category = interaction.options.getString("category");
+      const commandName = interaction.options.getString("command");
+
       if (commandName) {
         const command = client.scommands.get(commandName);
         if (!command) {
@@ -121,28 +159,24 @@ export default {
   },
 };
 
-// Helper functions
-function cleanupCollectors(userId, preserveType = null) {
-  const existing = collectors.get(userId);
-  if (existing && existing.type !== preserveType) {
-    existing.collector.stop();
-    collectors.delete(userId);
-  }
+function getCommandDescription(command) {
+  if (command.description) return command.description;
+  if (command.data?.description) return command.data.description;
+  return "No description available";
 }
 
-function registerCollector(userId, collector, type) {
-  cleanupCollectors(userId, type);
-  collectors.set(userId, { collector, type });
+function createMainMenuButton(disabled = false) {
+  return new ButtonBuilder()
+    .setCustomId("main_menu")
+    .setLabel("Main Menu")
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(disabled);
 }
 
-function updateViewState(userId, state) {
-  viewStates.set(userId, state);
-}
-
-// Main help menu display
-async function showMainHelp(interaction, commands, fromNavigation = false) {
+async function showMainHelp(interaction, commands) {
   try {
     const categories = [...new Set(commands.map((cmd) => cmd.category))].sort();
+
     const mainEmbed = new EmbedBuilder()
       .setColor(Colors.Blue)
       .setTitle("📚 Command Categories")
@@ -151,6 +185,7 @@ async function showMainHelp(interaction, commands, fromNavigation = false) {
       )
       .setTimestamp();
 
+    // Add category fields
     categories.forEach((category) => {
       const info = categoryInfo[category] || {
         emoji: "📁",
@@ -160,13 +195,13 @@ async function showMainHelp(interaction, commands, fromNavigation = false) {
         (cmd) => cmd.category === category
       );
       mainEmbed.addFields({
-        name:
-          info.emoji + " " + category + " [" + categoryCommands.length + "]",
+        name: `${info.emoji} ${category} [${categoryCommands.length}]`,
         value: info.description || "No description available",
         inline: false,
       });
     });
 
+    // Create category selection menu
     const row = new ActionRowBuilder().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId("category_select")
@@ -178,45 +213,69 @@ async function showMainHelp(interaction, commands, fromNavigation = false) {
               label: category,
               value: category,
               emoji: info.emoji,
-              description: "View " + category + " commands",
+              description: `View ${category} commands`,
             };
           })
         )
     );
 
+    // End transition state before replying
+    viewManager.setTransitioning(interaction.user.id, false);
+
+    // Send initial message
     const message = await interaction.editReply({
       embeds: [mainEmbed],
       components: [row],
     });
 
-    if (!fromNavigation) {
-      const collector = message.createMessageComponentCollector({
-        componentType: ComponentType.StringSelect,
-        filter: (i) => i.user.id === interaction.user.id,
-        time: 300000, // 5 minutes
-      });
+    // Create collector
+    const collector = message.createMessageComponentCollector({
+      componentType: ComponentType.StringSelect,
+      time: 300000, // 5 minutes
+    });
 
-      registerCollector(interaction.user.id, collector, "main");
-      updateViewState(interaction.user.id, { view: "main" });
+    viewManager.registerView(interaction.user.id, { view: "main" }, collector);
 
-      collector.on("collect", async (i) => {
-        try {
-          await i.deferUpdate();
-          const selectedCategory = i.values[0];
-          await showCategoryCommands(interaction, selectedCategory, commands);
-        } catch (error) {
-          console.error("Error in category selection:", error);
+    collector.on("collect", async (i) => {
+      if (i.user.id !== interaction.user.id) {
+        return i.reply({
+          content: "This menu isn't for you!",
+          ephemeral: true,
+        });
+      }
+
+      try {
+        // Prevent multiple concurrent interactions
+        if (viewManager.isTransitioning(i.user.id)) {
+          return i.reply({
+            content: "Please wait, processing your previous selection...",
+            ephemeral: true,
+          });
         }
-      });
 
-      collector.on("end", () => {
-        if (message.editable) {
-          const disabledRow = ActionRowBuilder.from(row);
-          disabledRow.components[0].setDisabled(true);
-          interaction.editReply({ components: [disabledRow] }).catch(() => {});
-        }
-      });
-    }
+        viewManager.setTransitioning(i.user.id, true);
+        await i.deferUpdate();
+
+        const selectedCategory = i.values[0];
+        collector.stop();
+        await showCategoryCommands(interaction, selectedCategory, commands);
+      } catch (error) {
+        viewManager.setTransitioning(i.user.id, false);
+        console.error("Error in category selection:", error);
+        i.followUp({
+          content: "An error occurred while processing your selection.",
+          ephemeral: true,
+        }).catch(() => {});
+      }
+    });
+
+    collector.on("end", () => {
+      if (message.editable) {
+        const disabledRow = ActionRowBuilder.from(row);
+        disabledRow.components[0].setDisabled(true);
+        interaction.editReply({ components: [disabledRow] }).catch(() => {});
+      }
+    });
   } catch (error) {
     console.error("Error in showMainHelp:", error);
     await interaction.editReply({
@@ -227,7 +286,7 @@ async function showMainHelp(interaction, commands, fromNavigation = false) {
 
 async function showCategoryCommands(interaction, category, commands) {
   try {
-    updateViewState(interaction.user.id, { view: "category", category });
+    viewManager.cleanup(interaction.user.id);
 
     const categoryCommands = Array.from(commands.values()).filter(
       (cmd) => cmd.category === category
@@ -239,19 +298,24 @@ async function showCategoryCommands(interaction, category, commands) {
       description: "Various commands",
     };
 
+    // Handle empty category
     if (categoryCommands.length === 0) {
+      viewManager.setTransitioning(interaction.user.id, false);
       return await interaction.editReply({
         content: "No commands found in this category.",
-        components: [getMainMenuButton()],
+        components: [
+          new ActionRowBuilder().addComponents(createMainMenuButton()),
+        ],
       });
     }
 
     const embed = new EmbedBuilder()
       .setColor(info.color)
-      .setTitle(info.emoji + " " + category + " Commands")
+      .setTitle(`${info.emoji} ${category} Commands`)
       .setDescription(info.description)
       .setTimestamp();
 
+    // Paginate commands
     const itemsPerPage = 9;
     const chunks = [];
     for (let i = 0; i < categoryCommands.length; i += itemsPerPage) {
@@ -260,25 +324,28 @@ async function showCategoryCommands(interaction, category, commands) {
 
     let currentPage = 0;
 
-    function getPageEmbed(page) {
+    // Create page display
+    function createPageContent(page) {
       const pageEmbed = EmbedBuilder.from(embed);
+
+      // Add command fields
       chunks[page].forEach((cmd) => {
         pageEmbed.addFields({
-          name: "/" + cmd.name,
+          name: `/${cmd.name}`,
           value: getCommandDescription(cmd),
           inline: false,
         });
       });
+
+      // Add page number if needed
       if (chunks.length > 1) {
         pageEmbed.setFooter({
-          text: "Page " + (page + 1) + " of " + chunks.length,
+          text: `Page ${page + 1} of ${chunks.length}`,
         });
       }
-      return pageEmbed;
-    }
 
-    function getCommandsRow(page) {
-      return new ActionRowBuilder().addComponents(
+      // Create command selection menu
+      const commandSelect = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId("command_select")
           .setPlaceholder("Select a command for details")
@@ -290,97 +357,117 @@ async function showCategoryCommands(interaction, category, commands) {
             }))
           )
       );
-    }
 
-    function getNavigationRow() {
-      return new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId("main_menu")
-          .setLabel("Main Menu")
-          .setStyle(ButtonStyle.Secondary),
+      // Create navigation row
+      const navigationRow = new ActionRowBuilder().addComponents(
+        createMainMenuButton(),
         ...(chunks.length > 1
           ? [
               new ButtonBuilder()
-                .setCustomId("prev")
+                .setCustomId("prev_page")
                 .setLabel("Previous")
                 .setStyle(ButtonStyle.Primary)
-                .setDisabled(currentPage === 0),
+                .setDisabled(page === 0),
               new ButtonBuilder()
-                .setCustomId("next")
+                .setCustomId("next_page")
                 .setLabel("Next")
                 .setStyle(ButtonStyle.Primary)
-                .setDisabled(currentPage === chunks.length - 1),
+                .setDisabled(page === chunks.length - 1),
             ]
           : [])
       );
+
+      return {
+        embeds: [pageEmbed],
+        components: [commandSelect, navigationRow],
+      };
     }
 
-    await interaction.editReply({
-      embeds: [getPageEmbed(currentPage)],
-      components: [getCommandsRow(currentPage), getNavigationRow()],
+    // End transition state before replying
+    viewManager.setTransitioning(interaction.user.id, false);
+
+    // Send initial message
+    const message = await interaction.editReply(createPageContent(currentPage));
+
+    // Create collector for interactions
+    const collector = message.createMessageComponentCollector({
+      time: 300000, // 5 minutes
     });
 
-    const collector = interaction.channel.createMessageComponentCollector({
-      filter: (i) => i.user.id === interaction.user.id,
-      time: 300000,
-    });
-
-    registerCollector(interaction.user.id, collector, "category");
+    viewManager.registerView(
+      interaction.user.id,
+      { view: "category", category, currentPage },
+      collector
+    );
 
     collector.on("collect", async (i) => {
+      if (i.user.id !== interaction.user.id) {
+        return i.reply({
+          content: "These controls aren't for you!",
+          ephemeral: true,
+        });
+      }
+
       try {
+        // Prevent multiple concurrent interactions
+        if (viewManager.isTransitioning(i.user.id)) {
+          return i.reply({
+            content: "Please wait, processing your previous selection...",
+            ephemeral: true,
+          });
+        }
+
+        viewManager.setTransitioning(i.user.id, true);
         await i.deferUpdate();
 
         switch (i.customId) {
           case "command_select": {
             const command = commands.get(i.values[0]);
+            collector.stop();
             await showCommandDetails(interaction, command);
             break;
           }
           case "main_menu":
-            cleanupCollectors(interaction.user.id);
-            await showMainHelp(interaction, commands, true);
+            collector.stop();
+            await showMainHelp(interaction, commands);
             break;
-          case "prev":
+          case "prev_page":
             currentPage = Math.max(0, currentPage - 1);
-            await interaction.editReply({
-              embeds: [getPageEmbed(currentPage)],
-              components: [getCommandsRow(currentPage), getNavigationRow()],
-            });
+            viewManager.setTransitioning(i.user.id, false);
+            await interaction.editReply(createPageContent(currentPage));
             break;
-          case "next":
+          case "next_page":
             currentPage = Math.min(chunks.length - 1, currentPage + 1);
-            await interaction.editReply({
-              embeds: [getPageEmbed(currentPage)],
-              components: [getCommandsRow(currentPage), getNavigationRow()],
-            });
+            viewManager.setTransitioning(i.user.id, false);
+            await interaction.editReply(createPageContent(currentPage));
             break;
         }
       } catch (error) {
-        console.error("Error in category command interaction:", error);
+        viewManager.setTransitioning(i.user.id, false);
+        console.error("Error handling interaction:", error);
+        i.followUp({
+          content: "An error occurred while processing your selection.",
+          ephemeral: true,
+        }).catch(() => {});
       }
     });
 
     collector.on("end", () => {
-      if (interaction.replied || interaction.deferred) {
-        const components = [getCommandsRow(currentPage), getNavigationRow()];
-        components.forEach((row) => {
+      if (message.editable) {
+        const lastContent = createPageContent(currentPage);
+        lastContent.components.forEach((row) => {
           row.components.forEach((c) => c.setDisabled(true));
         });
-        interaction.editReply({ components }).catch(() => {});
+        interaction.editReply(lastContent).catch(() => {});
       }
     });
   } catch (error) {
+    viewManager.setTransitioning(interaction.user.id, false);
     console.error("Error in showCategoryCommands:", error);
     await interaction.editReply({
       content: "An error occurred while showing category commands.",
       components: [
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("main_menu")
-            .setLabel("Main Menu")
-            .setStyle(ButtonStyle.Secondary)
-        ),
+        new ActionRowBuilder().addComponents(createMainMenuButton()),
       ],
     });
   }
@@ -388,11 +475,7 @@ async function showCategoryCommands(interaction, category, commands) {
 
 async function showCommandDetails(interaction, command) {
   try {
-    updateViewState(interaction.user.id, {
-      view: "command",
-      command: command.name,
-      category: command.category,
-    });
+    viewManager.cleanup(interaction.user.id);
 
     const info = categoryInfo[command.category] || {
       emoji: "📁",
@@ -401,14 +484,14 @@ async function showCommandDetails(interaction, command) {
 
     const embed = new EmbedBuilder()
       .setColor(info.color)
-      .setTitle("Command: /" + command.name)
+      .setTitle(`Command: /${command.name}`)
       .setDescription(getCommandDescription(command))
       .setTimestamp();
 
     if (command.cooldown) {
       embed.addFields({
         name: "⏰ Cooldown",
-        value: command.cooldown + " seconds",
+        value: `${command.cooldown} seconds`,
         inline: true,
       });
     }
@@ -428,11 +511,7 @@ async function showCommandDetails(interaction, command) {
         value: options
           .map(
             (opt) =>
-              (opt.required ? "❗" : "⭕") +
-              " " +
-              opt.name +
-              ": " +
-              opt.description
+              `${opt.required ? "❗" : "⭕"} ${opt.name}: ${opt.description}`
           )
           .join("\n"),
         inline: false,
@@ -441,7 +520,7 @@ async function showCommandDetails(interaction, command) {
 
     embed.addFields({
       name: "📁 Category",
-      value: info.emoji + " " + command.category,
+      value: `${info.emoji} ${command.category}`,
       inline: true,
     });
 
@@ -450,61 +529,82 @@ async function showCommandDetails(interaction, command) {
         .setCustomId("back_to_category")
         .setLabel("Back to Category")
         .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId("main_menu")
-        .setLabel("Main Menu")
-        .setStyle(ButtonStyle.Secondary)
+      createMainMenuButton()
     );
 
-    await interaction.editReply({
+    // End transition state before replying
+    viewManager.setTransitioning(interaction.user.id, false);
+
+    const message = await interaction.editReply({
       embeds: [embed],
       components: [row],
     });
 
-    const collector = interaction.channel.createMessageComponentCollector({
-      filter: (i) => i.user.id === interaction.user.id,
-      time: 300000,
+    const collector = message.createMessageComponentCollector({
+      time: 300000, // 5 minutes
     });
 
-    registerCollector(interaction.user.id, collector, "command");
+    viewManager.registerView(
+      interaction.user.id,
+      { view: "command", command: command.name },
+      collector
+    );
 
     collector.on("collect", async (i) => {
+      if (i.user.id !== interaction.user.id) {
+        return i.reply({
+          content: "These controls aren't for you!",
+          ephemeral: true,
+        });
+      }
+
       try {
+        // Prevent multiple concurrent interactions
+        if (viewManager.isTransitioning(i.user.id)) {
+          return i.reply({
+            content: "Please wait, processing your previous selection...",
+            ephemeral: true,
+          });
+        }
+
+        viewManager.setTransitioning(i.user.id, true);
         await i.deferUpdate();
 
         if (i.customId === "back_to_category") {
+          collector.stop();
           await showCategoryCommands(
             interaction,
             command.category,
             interaction.client.scommands
           );
         } else if (i.customId === "main_menu") {
-          cleanupCollectors(interaction.user.id);
-          await showMainHelp(interaction, interaction.client.scommands, true);
+          collector.stop();
+          await showMainHelp(interaction, interaction.client.scommands);
         }
       } catch (error) {
-        console.error("Error in command details interaction:", error);
+        viewManager.setTransitioning(i.user.id, false);
+        console.error("Error handling interaction:", error);
+        i.followUp({
+          content: "An error occurred while processing your selection.",
+          ephemeral: true,
+        }).catch(() => {});
       }
     });
 
     collector.on("end", () => {
-      if (interaction.replied || interaction.deferred) {
+      if (message.editable) {
         const disabledRow = ActionRowBuilder.from(row);
-        disabledRow.components.forEach((button) => button.setDisabled(true));
+        disabledRow.components.forEach((c) => c.setDisabled(true));
         interaction.editReply({ components: [disabledRow] }).catch(() => {});
       }
     });
   } catch (error) {
+    viewManager.setTransitioning(interaction.user.id, false);
     console.error("Error in showCommandDetails:", error);
     await interaction.editReply({
       content: "An error occurred while showing command details.",
       components: [
-        new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId("main_menu")
-            .setLabel("Main Menu")
-            .setStyle(ButtonStyle.Secondary)
-        ),
+        new ActionRowBuilder().addComponents(createMainMenuButton()),
       ],
     });
   }
