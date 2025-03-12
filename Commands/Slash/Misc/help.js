@@ -11,16 +11,12 @@ import {
 
 // Utility function to get command description
 function getCommandDescription(command) {
-  if (command.description) {
-    return command.description;
-  }
-  if (command.data?.description) {
-    return command.data.description;
-  }
+  if (command.description) return command.description;
+  if (command.data?.description) return command.data.description;
   return "No description available";
 }
 
-// Global state variables
+// Global state management
 const collectors = new Map();
 const viewStates = new Map();
 
@@ -48,7 +44,7 @@ const categoryInfo = {
   },
 };
 
-// Main command configuration
+// Command configuration
 export default {
   name: "help",
   data: new SlashCommandBuilder()
@@ -79,9 +75,6 @@ export default {
 
   run: async ({ client, interaction }) => {
     await interaction.deferReply();
-
-    // Clean up existing collectors for this user
-    cleanupCollectors(interaction.user.id);
 
     const category = interaction.options.getString("category");
     const commandName = interaction.options.getString("command");
@@ -128,27 +121,26 @@ export default {
   },
 };
 
-// Utility functions for collector management
-function cleanupCollectors(userId) {
-  const existingCollector = collectors.get(userId);
-  if (existingCollector) {
-    existingCollector.stop();
+// Helper functions
+function cleanupCollectors(userId, preserveType = null) {
+  const existing = collectors.get(userId);
+  if (existing && existing.type !== preserveType) {
+    existing.collector.stop();
     collectors.delete(userId);
   }
 }
 
-function registerCollector(userId, collector) {
-  cleanupCollectors(userId);
-  collectors.set(userId, collector);
+function registerCollector(userId, collector, type) {
+  cleanupCollectors(userId, type);
+  collectors.set(userId, { collector, type });
+}
 
-  // Auto cleanup after collector ends
-  collector.on("end", () => {
-    collectors.delete(userId);
-  });
+function updateViewState(userId, state) {
+  viewStates.set(userId, state);
 }
 
 // Main help menu display
-async function showMainHelp(interaction, commands) {
+async function showMainHelp(interaction, commands, fromNavigation = false) {
   try {
     const categories = [...new Set(commands.map((cmd) => cmd.category))].sort();
     const mainEmbed = new EmbedBuilder()
@@ -197,47 +189,45 @@ async function showMainHelp(interaction, commands) {
       components: [row],
     });
 
-    // Create and register collector
-    const collector = message.createMessageComponentCollector({
-      componentType: ComponentType.StringSelect,
-      filter: (i) => i.user.id === interaction.user.id,
-      time: 60000,
-    });
+    if (!fromNavigation) {
+      const collector = message.createMessageComponentCollector({
+        componentType: ComponentType.StringSelect,
+        filter: (i) => i.user.id === interaction.user.id,
+        time: 300000, // 5 minutes
+      });
 
-    registerCollector(interaction.user.id, collector);
+      registerCollector(interaction.user.id, collector, "main");
+      updateViewState(interaction.user.id, { view: "main" });
 
-    viewStates.set(interaction.user.id, { view: "main" });
+      collector.on("collect", async (i) => {
+        try {
+          await i.deferUpdate();
+          const selectedCategory = i.values[0];
+          await showCategoryCommands(interaction, selectedCategory, commands);
+        } catch (error) {
+          console.error("Error in category selection:", error);
+        }
+      });
 
-    collector.on("collect", async (i) => {
-      try {
-        await i.deferUpdate();
-        const selectedCategory = i.values[0];
-        await showCategoryCommands(interaction, selectedCategory, commands);
-      } catch (error) {
-        console.error("Error in category selection:", error);
-      }
-    });
-
-    collector.on("end", () => {
-      if (message.editable) {
-        row.components[0].setDisabled(true);
-        interaction.editReply({ components: [row] }).catch(() => {});
-      }
-    });
-  } catch (error) {
-    console.error("Error in showMainHelp:", error);
-    if (interaction.replied || interaction.deferred) {
-      await interaction.editReply({
-        content: "An error occurred while showing the help menu.",
+      collector.on("end", () => {
+        if (message.editable) {
+          const disabledRow = ActionRowBuilder.from(row);
+          disabledRow.components[0].setDisabled(true);
+          interaction.editReply({ components: [disabledRow] }).catch(() => {});
+        }
       });
     }
+  } catch (error) {
+    console.error("Error in showMainHelp:", error);
+    await interaction.editReply({
+      content: "An error occurred while showing the help menu.",
+    });
   }
 }
 
 async function showCategoryCommands(interaction, category, commands) {
   try {
-    cleanupCollectors(interaction.user.id);
-    viewStates.set(interaction.user.id, { view: "category", category });
+    updateViewState(interaction.user.id, { view: "category", category });
 
     const categoryCommands = Array.from(commands.values()).filter(
       (cmd) => cmd.category === category
@@ -287,6 +277,21 @@ async function showCategoryCommands(interaction, category, commands) {
       return pageEmbed;
     }
 
+    function getCommandsRow(page) {
+      return new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId("command_select")
+          .setPlaceholder("Select a command for details")
+          .addOptions(
+            chunks[page].map((cmd) => ({
+              label: cmd.name,
+              value: cmd.name,
+              description: getCommandDescription(cmd).slice(0, 100),
+            }))
+          )
+      );
+    }
+
     function getNavigationRow() {
       return new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -310,30 +315,17 @@ async function showCategoryCommands(interaction, category, commands) {
       );
     }
 
-    const selectRow = new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId("command_select")
-        .setPlaceholder("Select a command for details")
-        .addOptions(
-          chunks[currentPage].map((cmd) => ({
-            label: cmd.name,
-            value: cmd.name,
-            description: getCommandDescription(cmd).slice(0, 100),
-          }))
-        )
-    );
-
     await interaction.editReply({
       embeds: [getPageEmbed(currentPage)],
-      components: [selectRow, getNavigationRow()],
+      components: [getCommandsRow(currentPage), getNavigationRow()],
     });
 
     const collector = interaction.channel.createMessageComponentCollector({
       filter: (i) => i.user.id === interaction.user.id,
-      time: 60000,
+      time: 300000,
     });
 
-    registerCollector(interaction.user.id, collector);
+    registerCollector(interaction.user.id, collector, "category");
 
     collector.on("collect", async (i) => {
       try {
@@ -346,34 +338,21 @@ async function showCategoryCommands(interaction, category, commands) {
             break;
           }
           case "main_menu":
-            await showMainHelp(interaction, commands);
+            cleanupCollectors(interaction.user.id);
+            await showMainHelp(interaction, commands, true);
             break;
           case "prev":
             currentPage = Math.max(0, currentPage - 1);
-            selectRow.components[0].setOptions(
-              chunks[currentPage].map((cmd) => ({
-                label: cmd.name,
-                value: cmd.name,
-                description: getCommandDescription(cmd).slice(0, 100),
-              }))
-            );
             await interaction.editReply({
               embeds: [getPageEmbed(currentPage)],
-              components: [selectRow, getNavigationRow()],
+              components: [getCommandsRow(currentPage), getNavigationRow()],
             });
             break;
           case "next":
             currentPage = Math.min(chunks.length - 1, currentPage + 1);
-            selectRow.components[0].setOptions(
-              chunks[currentPage].map((cmd) => ({
-                label: cmd.name,
-                value: cmd.name,
-                description: getCommandDescription(cmd).slice(0, 100),
-              }))
-            );
             await interaction.editReply({
               embeds: [getPageEmbed(currentPage)],
-              components: [selectRow, getNavigationRow()],
+              components: [getCommandsRow(currentPage), getNavigationRow()],
             });
             break;
         }
@@ -384,13 +363,11 @@ async function showCategoryCommands(interaction, category, commands) {
 
     collector.on("end", () => {
       if (interaction.replied || interaction.deferred) {
-        const disabledRow = ActionRowBuilder.from(selectRow);
-        const disabledNav = ActionRowBuilder.from(getNavigationRow());
-        disabledRow.components.forEach((c) => c.setDisabled(true));
-        disabledNav.components.forEach((c) => c.setDisabled(true));
-        interaction
-          .editReply({ components: [disabledRow, disabledNav] })
-          .catch(() => {});
+        const components = [getCommandsRow(currentPage), getNavigationRow()];
+        components.forEach((row) => {
+          row.components.forEach((c) => c.setDisabled(true));
+        });
+        interaction.editReply({ components }).catch(() => {});
       }
     });
   } catch (error) {
@@ -411,8 +388,7 @@ async function showCategoryCommands(interaction, category, commands) {
 
 async function showCommandDetails(interaction, command) {
   try {
-    cleanupCollectors(interaction.user.id);
-    viewStates.set(interaction.user.id, {
+    updateViewState(interaction.user.id, {
       view: "command",
       command: command.name,
       category: command.category,
@@ -487,10 +463,10 @@ async function showCommandDetails(interaction, command) {
 
     const collector = interaction.channel.createMessageComponentCollector({
       filter: (i) => i.user.id === interaction.user.id,
-      time: 60000,
+      time: 300000,
     });
 
-    registerCollector(interaction.user.id, collector);
+    registerCollector(interaction.user.id, collector, "command");
 
     collector.on("collect", async (i) => {
       try {
@@ -503,7 +479,8 @@ async function showCommandDetails(interaction, command) {
             interaction.client.scommands
           );
         } else if (i.customId === "main_menu") {
-          await showMainHelp(interaction, interaction.client.scommands);
+          cleanupCollectors(interaction.user.id);
+          await showMainHelp(interaction, interaction.client.scommands, true);
         }
       } catch (error) {
         console.error("Error in command details interaction:", error);
@@ -512,8 +489,9 @@ async function showCommandDetails(interaction, command) {
 
     collector.on("end", () => {
       if (interaction.replied || interaction.deferred) {
-        row.components.forEach((button) => button.setDisabled(true));
-        interaction.editReply({ components: [row] }).catch(() => {});
+        const disabledRow = ActionRowBuilder.from(row);
+        disabledRow.components.forEach((button) => button.setDisabled(true));
+        interaction.editReply({ components: [disabledRow] }).catch(() => {});
       }
     });
   } catch (error) {

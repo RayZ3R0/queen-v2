@@ -94,7 +94,7 @@ setInterval(async () => {
           .addFields(
             {
               name: "Command",
-              value: "Use </bump:1234> to bump the server",
+              value: "Use </bump:1349407842020622467> to bump the server",
               inline: true,
             },
             {
