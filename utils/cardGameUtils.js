@@ -13,6 +13,20 @@ export const EXTRA_TWEAK_PROBABILITY = 0.2;
 export const NATURAL_BLACKJACK_MULTIPLIER = 1.5;
 export const MAX_ANIMATIONS_PER_MIN = 5;
 
+// Difficulty-based payout multipliers
+const DIFFICULTY_MULTIPLIERS = {
+  easy: 1.2,
+  normal: 1.0,
+  hard: 0.8,
+};
+
+// Calculate payout with difficulty adjustment
+export const calculatePayout = (baseBet, multiplier, difficulty = "normal") => {
+  const difficultyMultiplier =
+    DIFFICULTY_MULTIPLIERS[difficulty] || DIFFICULTY_MULTIPLIERS.normal;
+  return Math.floor(baseBet * multiplier * difficultyMultiplier);
+};
+
 // Card definitions
 export const suits = ["S", "H", "D", "C"];
 export const ranks = [
@@ -36,12 +50,34 @@ export const cardImages = {};
 suits.forEach((suit) => {
   ranks.forEach(({ rank }) => {
     const code = `${rank}${suit}`;
-    cardImages[code] = join(
-      __dirname,
-      "..",
-      "Cards",
-      `${rank.toLowerCase()}_of_${getSuitName(suit)}.png`
-    );
+    let fileName = "";
+
+    // Handle face cards that have "2" suffix
+    if (["K", "Q", "J"].includes(rank)) {
+      const cardName = {
+        K: "king",
+        Q: "queen",
+        J: "jack",
+      }[rank];
+      fileName = `${cardName}_of_${getSuitName(suit)}2.png`;
+    } else {
+      // Regular number cards and ace
+      const cardName = {
+        A: "ace",
+        2: "2",
+        3: "3",
+        4: "4",
+        5: "5",
+        6: "6",
+        7: "7",
+        8: "8",
+        9: "9",
+        10: "10",
+      }[rank];
+      fileName = `${cardName}_of_${getSuitName(suit)}.png`;
+    }
+
+    cardImages[code] = join(__dirname, "..", "Cards", fileName);
   });
 });
 
