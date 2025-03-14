@@ -160,27 +160,35 @@ class HangmanGame {
     return hangmanStages[6 - this.remainingGuesses];
   }
 
-  // Get masked word - UPDATED to properly escape underscores for Discord
+  // Get masked word with proper capitalization
   getMaskedWord() {
+    let isNewWord = true;
     return this.word
       .split("")
-      .map((char) => {
+      .map((char, index) => {
         // If character is a space, return multiple spaces for better formatting
         if (char === " ") {
+          isNewWord = true; // Next character will start a new word
           return "   "; // three spaces to maintain visual spacing
         }
-        // If character is alphanumeric and guessed, show it
+        // If character is alphanumeric and guessed
         if (
           /[a-z0-9]/i.test(char) &&
           this.guessedLetters.has(char.toLowerCase())
         ) {
-          return char;
+          // If it's the start of a word, capitalize it
+          if (isNewWord) {
+            isNewWord = false;
+            return char.toUpperCase();
+          }
+          return char.toLowerCase();
         }
         // If character is not alphanumeric (like punctuation), show it
         if (!/[a-z0-9]/i.test(char)) {
           return char;
         }
         // For unguessed letters, return escaped underscore
+        isNewWord = false;
         return "\\_";
       })
       .join(" ");
