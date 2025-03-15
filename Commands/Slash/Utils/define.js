@@ -9,7 +9,6 @@ import {
   createDefinitionEmbed,
   createErrorEmbed,
   createNoResultsEmbed,
-  createShareEmbed,
 } from "../../../utils/defineUtils/embedBuilder.js";
 
 export default {
@@ -35,14 +34,21 @@ export default {
     ),
 
   // Handle autocomplete interactions
-  async autocomplete({ interaction }) {
+  async autocompleteRun({ interaction }) {
     const focusedValue = interaction.options.getFocused();
-    if (!focusedValue) return interaction.respond([]);
+    if (!focusedValue || focusedValue.length < 2) {
+      return interaction.respond([]);
+    }
 
-    const suggestions = await getAutoComplete(focusedValue);
-    await interaction.respond(
-      suggestions.map((term) => ({ name: term, value: term }))
-    );
+    try {
+      const suggestions = await getAutoComplete(focusedValue);
+      await interaction.respond(
+        suggestions.map((term) => ({ name: term, value: term }))
+      );
+    } catch (error) {
+      console.error("Autocomplete error:", error);
+      await interaction.respond([]);
+    }
   },
 
   async run({ interaction }) {
@@ -57,6 +63,14 @@ export default {
       // Fetch definitions if not cached
       if (!definitions) {
         definitions = await searchTerm(term);
+
+        // Sort definitions by vote score (thumbs_up - thumbs_down)
+        definitions.sort((a, b) => {
+          const scoreA = a.thumbs_up - a.thumbs_down;
+          const scoreB = b.thumbs_up - b.thumbs_down;
+          return scoreB - scoreA; // Descending order
+        });
+
         if (definitions.length > 0) {
           definitionCache.set(term, definitions);
         }
@@ -73,16 +87,11 @@ export default {
         });
       }
 
-      // Initial batch of definitions (10)
-      let currentBatch = definitions.slice(0, 10);
-      const hasMore = definitions.length > 10;
-
       const updateEmbed = async () => {
         const { embed, actionRow } = createDefinitionEmbed(
-          currentBatch[currentPage],
+          definitions[currentPage],
           currentPage,
-          currentBatch.length,
-          hasMore && currentPage === currentBatch.length - 1
+          definitions.length
         );
 
         return interaction.editReply({
@@ -112,42 +121,30 @@ export default {
             break;
 
           case "next":
-            if (currentPage < currentBatch.length - 1) {
+            if (currentPage < definitions.length - 1) {
               currentPage++;
               await updateEmbed();
             }
             break;
 
-          case "more":
-            // Load next batch of definitions
-            const nextBatchStart = currentBatch.length;
-            const nextBatch = definitions.slice(
-              nextBatchStart,
-              nextBatchStart + 10
-            );
-
-            if (nextBatch.length) {
-              currentBatch = [...currentBatch, ...nextBatch];
-              currentPage = nextBatchStart;
-              await updateEmbed();
+          case "delete":
+            // Delete the reply if the user has permission
+            if (i.message.deletable) {
+              await i.message.delete();
             }
-            break;
-
-          case "share":
-            // Create a new message with a shareable embed
-            const shareEmbed = createShareEmbed(currentBatch[currentPage]);
-            await i.channel.send({ embeds: [shareEmbed] });
             break;
         }
       });
 
       collector.on("end", () => {
+        // Don't update if message was deleted
+        if (!interaction.replied) return;
+
         // Disable all buttons when collector expires
         const { embed, actionRow } = createDefinitionEmbed(
-          currentBatch[currentPage],
+          definitions[currentPage],
           currentPage,
-          currentBatch.length,
-          false
+          definitions.length
         );
         actionRow.components.forEach((button) => button.setDisabled(true));
 

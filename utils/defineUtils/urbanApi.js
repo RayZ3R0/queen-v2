@@ -27,22 +27,36 @@ export const searchTerm = async (term) => {
 };
 
 /**
- * Fetches autocomplete suggestions for a term
+ * Fetches autocomplete suggestions for a term using DefineData API
  * @param {string} term - The partial term to get suggestions for
  * @returns {Promise<Array<string>>} Array of suggested terms
  */
 export const getAutoComplete = async (term) => {
   try {
+    // Use the define endpoint with a more targeted search
     const response = await fetch(
-      `${URBAN_API_URL}/autocomplete?term=${encodeURIComponent(term)}`
+      `${URBAN_API_URL}/define?term=${encodeURIComponent(term)}`
     );
 
     if (!response.ok) {
       return [];
     }
 
-    const suggestions = await response.json();
-    return suggestions.slice(0, 25); // Limit to 25 suggestions
+    const data = await response.json();
+
+    // Extract unique terms from definitions that start with our search term
+    const suggestions = new Set();
+    const searchTerm = term.toLowerCase();
+
+    // Process the list of definitions to extract relevant terms
+    data.list?.forEach((def) => {
+      if (def.word.toLowerCase().startsWith(searchTerm)) {
+        suggestions.add(def.word);
+      }
+    });
+
+    // Convert Set to Array and limit results
+    return Array.from(suggestions).slice(0, 25);
   } catch (error) {
     console.error("Urban Dictionary autocomplete error:", error);
     return [];

@@ -11,17 +11,12 @@ import { formatContent, formatDate } from "./urbanApi.js";
  * @param {Object} definition - The definition object
  * @param {number} currentPage - Current page number
  * @param {number} totalPages - Total number of pages
- * @param {boolean} hasMore - Whether there are more definitions available
  * @returns {Object} Embed and action row builders
  */
-export const createDefinitionEmbed = (
-  definition,
-  currentPage,
-  totalPages,
-  hasMore = false
-) => {
+export const createDefinitionEmbed = (definition, currentPage, totalPages) => {
   const embed = new EmbedBuilder()
     .setTitle(`📚 ${definition.word}`)
+    .setURL(definition.permalink)
     .setColor("#1D2439")
     .setDescription(formatContent(definition.definition))
     .addFields([
@@ -41,9 +36,7 @@ export const createDefinitionEmbed = (
       },
     ])
     .setFooter({
-      text: `Definition ${currentPage + 1}/${totalPages}${
-        hasMore ? " • More available" : ""
-      }`,
+      text: `Definition ${currentPage + 1}/${totalPages}`,
     });
 
   // Create navigation buttons
@@ -57,26 +50,19 @@ export const createDefinitionEmbed = (
     .setCustomId("next")
     .setLabel("Next")
     .setStyle(ButtonStyle.Secondary)
-    .setDisabled(currentPage === totalPages - 1 && !hasMore);
+    .setDisabled(currentPage === totalPages - 1);
 
-  const loadMoreButton = new ButtonBuilder()
-    .setCustomId("more")
-    .setLabel("Load More")
-    .setStyle(ButtonStyle.Primary)
-    .setDisabled(!hasMore);
-
-  const shareButton = new ButtonBuilder()
-    .setCustomId("share")
-    .setLabel("Share")
-    .setStyle(ButtonStyle.Success)
-    .setEmoji("🔗");
+  const deleteButton = new ButtonBuilder()
+    .setCustomId("delete")
+    .setLabel("Delete")
+    .setStyle(ButtonStyle.Danger)
+    .setEmoji("🗑️");
 
   // Create action row with buttons
   const actionRow = new ActionRowBuilder().addComponents(
     prevButton,
     nextButton,
-    loadMoreButton,
-    shareButton
+    deleteButton
   );
 
   return { embed, actionRow };
@@ -108,21 +94,5 @@ export const createNoResultsEmbed = (term) => {
     )
     .setFooter({
       text: "Tip: Use the autocomplete suggestions for better results!",
-    });
-};
-
-/**
- * Creates a share message embed
- * @param {Object} definition - The definition object
- * @returns {EmbedBuilder} Share embed
- */
-export const createShareEmbed = (definition) => {
-  return new EmbedBuilder()
-    .setTitle(`📖 Urban Dictionary: ${definition.word}`)
-    .setColor("#1D2439")
-    .setDescription(formatContent(definition.definition))
-    .setURL(definition.permalink)
-    .setFooter({
-      text: "🔍 Look up more definitions with /define",
     });
 };
