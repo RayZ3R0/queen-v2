@@ -1,4 +1,4 @@
-import { InteractionType } from "discord.js";
+import { InteractionType, EmbedBuilder } from "discord.js";
 import { client } from "../bot.js";
 import {
   validatePermissions,
@@ -81,16 +81,16 @@ client.on("interactionCreate", async (interaction) => {
 
         const timeframe = interaction.values[0];
         const message = interaction.message;
-        const embed = message.embeds[0];
+        const oldEmbed = message.embeds[0];
         const components = [...message.components];
         const files = [];
 
         // Get the current view from the embed title
-        const titleParts = embed.title.split(" - ");
+        const titleParts = oldEmbed.title.split(" - ");
         const currentView = titleParts[1].toLowerCase();
 
-        // Update title with new timeframe
-        embed.setTitle(
+        // Create new embed with updated title
+        const embed = EmbedBuilder.from(oldEmbed).setTitle(
           `Server Statistics - ${
             currentView.charAt(0).toUpperCase() + currentView.slice(1)
           } - ${timeframes[timeframe].label}`
@@ -138,10 +138,20 @@ client.on("interactionCreate", async (interaction) => {
     // Handle any unexpected errors
     console.error("An error occurred in interactionCreate event:", error);
     try {
-      const errorMessage = {
+      let errorMessage = {
         content: "❌ An unexpected error occurred. Please try again later.",
         ephemeral: true,
       };
+
+      // Special handling for canvas/chart generation errors
+      if (
+        error.message?.includes("panicked") ||
+        error.message?.includes("None value") ||
+        error.message?.includes("cannot read properties of null")
+      ) {
+        errorMessage.content =
+          "❌ Unable to generate statistics chart. Statistics will be available once more data is collected.";
+      }
 
       if (interaction.deferred) {
         await interaction.editReply(errorMessage);

@@ -28,20 +28,84 @@ function generateCacheKey(type, data, options) {
  * Validates chart input data
  */
 function validateChartData(labels, datasets, title) {
-  if (!Array.isArray(labels) || labels.length === 0) {
-    throw new Error("Labels must be a non-empty array");
-  }
-  if (!Array.isArray(datasets) || datasets.length === 0) {
-    throw new Error("Datasets must be a non-empty array");
-  }
-  datasets.forEach((dataset, i) => {
-    if (!Array.isArray(dataset.data) || dataset.data.length === 0) {
-      throw new Error(`Dataset ${i} must contain non-empty data array`);
+  try {
+    // Basic type checking
+    if (!Array.isArray(labels)) {
+      console.log("Labels is not an array");
+      return false;
     }
-    if (dataset.data.length !== labels.length) {
-      throw new Error(`Dataset ${i} length must match labels length`);
+    if (!Array.isArray(datasets)) {
+      console.log("Datasets is not an array");
+      return false;
     }
-  });
+
+    // Length validation
+    if (labels.length === 0 || datasets.length === 0) {
+      console.log("Empty labels or datasets");
+      return false;
+    }
+
+    // Dataset validation
+    for (const dataset of datasets) {
+      if (!dataset?.data || !Array.isArray(dataset.data)) {
+        console.log("Invalid dataset data");
+        return false;
+      }
+
+      if (dataset.data.length !== labels.length) {
+        console.log("Dataset length mismatch");
+        return false;
+      }
+
+      // Ensure all values are valid numbers
+      const validData = dataset.data.every((value) => {
+        const num = Number(value);
+        return !isNaN(num) && isFinite(num);
+      });
+
+      if (!validData) {
+        console.log("Dataset contains invalid numeric values");
+        return false;
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error in validateChartData:", error);
+    return false;
+  }
+}
+
+/**
+ * Creates a "No Data Available" chart
+ */
+function createEmptyChart(title = "") {
+  const canvas = createCanvas(WIDTH, HEIGHT);
+  const ctx = canvas.getContext("2d");
+
+  // Set background
+  ctx.fillStyle = "#2F3136";
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  // Draw message
+  ctx.fillStyle = "#FFFFFF";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  if (title) {
+    ctx.font = "bold 16px Arial";
+    ctx.fillText(title, WIDTH / 2, HEIGHT / 4);
+  }
+
+  ctx.font = "14px Arial";
+  ctx.fillText("No data available yet", WIDTH / 2, HEIGHT / 2);
+  ctx.fillText(
+    "Statistics will appear as data is collected",
+    WIDTH / 2,
+    HEIGHT / 2 + 30
+  );
+
+  return canvas.toBuffer("image/png");
 }
 
 /**
@@ -73,11 +137,14 @@ function createChartCanvas() {
  */
 async function generateLineChart(labels, datasets, title = "") {
   try {
-    validateChartData(labels, datasets, title);
     const cacheKey = generateCacheKey("line", { labels, datasets, title });
 
     if (chartCache.has(cacheKey)) {
       return chartCache.get(cacheKey);
+    }
+
+    if (!validateChartData(labels, datasets, title)) {
+      return createEmptyChart(title);
     }
 
     const { canvas, ctx } = createChartCanvas();
@@ -103,12 +170,23 @@ async function generateLineChart(labels, datasets, title = "") {
     ctx.lineTo(WIDTH - margin, HEIGHT - margin);
     ctx.stroke();
 
-    // Calculate scales
-    const allValues = datasets.flatMap((d) => d.data);
-    const maxValue = Math.max(...allValues);
-    const minValue = Math.min(0, Math.min(...allValues));
-    const yScale = chartHeight / (maxValue - minValue);
-    const xStep = chartWidth / (labels.length - 1);
+    // Calculate scales with safety checks
+    const allValues = datasets.flatMap((d) => d.data).map((v) => Number(v));
+    const validValues = allValues.filter((v) => !isNaN(v) && isFinite(v));
+
+    if (validValues.length === 0) {
+      console.log("No valid numeric values for chart");
+      return createEmptyChart(title);
+    }
+
+    const maxValue = Math.max(...validValues, 0);
+    const minValue = Math.min(0, ...validValues);
+    const valueRange = maxValue - minValue;
+
+    // Avoid division by zero and ensure valid scales
+    const yScale = valueRange > 0 ? chartHeight / valueRange : chartHeight;
+    const xStep =
+      labels.length > 1 ? chartWidth / (labels.length - 1) : chartWidth;
 
     // Draw grid lines
     ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
@@ -145,7 +223,11 @@ async function generateLineChart(labels, datasets, title = "") {
 
       dataset.data.forEach((value, i) => {
         const x = margin + i * xStep;
-        const y = margin + chartHeight - (value - minValue) * yScale;
+        let y =
+          margin + chartHeight - ((Number(value) || 0) - minValue) * yScale;
+
+        // Ensure y is within valid bounds
+        y = Math.max(margin, Math.min(HEIGHT - margin, y));
 
         if (i === 0) {
           ctx.moveTo(x, y);
@@ -156,15 +238,22 @@ async function generateLineChart(labels, datasets, title = "") {
 
       ctx.stroke();
 
-      // Draw points
+      // Draw points with validation
       ctx.fillStyle = ctx.strokeStyle;
       dataset.data.forEach((value, i) => {
         const x = margin + i * xStep;
-        const y = margin + chartHeight - (value - minValue) * yScale;
+        let y =
+          margin + chartHeight - ((Number(value) || 0) - minValue) * yScale;
 
-        ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
-        ctx.fill();
+        // Ensure y is within valid bounds
+        y = Math.max(margin, Math.min(HEIGHT - margin, y));
+
+        // Only draw point if value is valid
+        if (!isNaN(value) && isFinite(value)) {
+          ctx.beginPath();
+          ctx.arc(x, y, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
       });
     });
 
@@ -191,7 +280,7 @@ async function generateLineChart(labels, datasets, title = "") {
     return buffer;
   } catch (error) {
     console.error("Error generating line chart:", error);
-    throw error;
+    return createEmptyChart(title);
   }
 }
 
@@ -200,7 +289,6 @@ async function generateLineChart(labels, datasets, title = "") {
  */
 async function generateBarChart(labels, datasets, title = "", stacked = false) {
   try {
-    validateChartData(labels, datasets, title);
     const cacheKey = generateCacheKey("bar", {
       labels,
       datasets,
@@ -210,6 +298,10 @@ async function generateBarChart(labels, datasets, title = "", stacked = false) {
 
     if (chartCache.has(cacheKey)) {
       return chartCache.get(cacheKey);
+    }
+
+    if (!validateChartData(labels, datasets, title)) {
+      return createEmptyChart(title);
     }
 
     const { canvas, ctx } = createChartCanvas();
@@ -316,7 +408,7 @@ async function generateBarChart(labels, datasets, title = "", stacked = false) {
     return buffer;
   } catch (error) {
     console.error("Error generating bar chart:", error);
-    throw error;
+    return createEmptyChart(title);
   }
 }
 
@@ -325,12 +417,16 @@ async function generateBarChart(labels, datasets, title = "", stacked = false) {
  */
 async function generatePieChart(labels, data, title = "") {
   try {
+    if (!Array.isArray(labels) || !Array.isArray(data)) {
+      throw new Error("Labels and data must be arrays");
+    }
+
     if (
-      !Array.isArray(labels) ||
-      !Array.isArray(data) ||
+      labels.length === 0 ||
+      data.length === 0 ||
       labels.length !== data.length
     ) {
-      throw new Error("Labels and data must be arrays of the same length");
+      return createEmptyChart(title);
     }
 
     const cacheKey = generateCacheKey("pie", { labels, data, title });
@@ -350,6 +446,10 @@ async function generatePieChart(labels, data, title = "") {
     }
 
     const total = data.reduce((sum, value) => sum + value, 0);
+    if (total === 0) {
+      return createEmptyChart(title);
+    }
+
     const centerX = WIDTH / 2;
     const centerY = HEIGHT / 2;
     const radius = Math.min(WIDTH, HEIGHT) / 3;
@@ -406,7 +506,7 @@ async function generatePieChart(labels, data, title = "") {
     return buffer;
   } catch (error) {
     console.error("Error generating pie chart:", error);
-    throw error;
+    return createEmptyChart(title);
   }
 }
 
