@@ -4,7 +4,7 @@ const memberActivitySchema = new mongoose.Schema(
   {
     guildId: { type: String, required: true },
     userId: { type: String, required: true },
-    joinTimestamp: { type: Date, required: true },
+    joinTimestamp: { type: Date, required: true, default: Date.now },
     leaveHistory: [
       {
         leftAt: Date,
@@ -109,6 +109,64 @@ guildSnapshotSchema.index(
   }
 );
 
+// Add error handler for validation errors
+memberActivitySchema.post("save", function (error, doc, next) {
+  if (error.name === "ValidationError") {
+    console.error("MemberActivity Validation Error:", {
+      document: doc?.guildId,
+      userId: doc?.userId,
+      error: error.message,
+      details: error.errors,
+    });
+  }
+  next(error);
+});
+
+// Add pre-save middleware for validation and data sanitization
+memberActivitySchema.pre("save", function (next) {
+  const now = new Date();
+
+  // Ensure joinTimestamp exists and is valid
+  if (!this.joinTimestamp || isNaN(this.joinTimestamp.getTime())) {
+    this.joinTimestamp = now;
+  }
+
+  // Validate activityScore
+  if (isNaN(this.activityScore)) {
+    this.activityScore = 0;
+  }
+
+  // Ensure all maps and required fields exist with proper defaults
+  this.messageStats = this.messageStats || {};
+  this.voiceStats = this.voiceStats || {};
+  this.threadParticipation = this.threadParticipation || {
+    created: 0,
+    joined: 0,
+    messagesInThreads: 0,
+  };
+
+  // Initialize messageStats fields
+  this.messageStats.totalCount = this.messageStats.totalCount || 0;
+  this.messageStats.channelDistribution =
+    this.messageStats.channelDistribution || new Map();
+  this.messageStats.hourlyActivity =
+    this.messageStats.hourlyActivity || new Map();
+  this.messageStats.weeklyActivity =
+    this.messageStats.weeklyActivity || new Map();
+
+  // Initialize voiceStats fields
+  this.voiceStats.totalMinutes = this.voiceStats.totalMinutes || 0;
+  this.voiceStats.channelMinutes = this.voiceStats.channelMinutes || new Map();
+  this.voiceStats.hourlyActivity = this.voiceStats.hourlyActivity || new Map();
+  this.voiceStats.weeklyActivity = this.voiceStats.weeklyActivity || new Map();
+
+  // Ensure timestamps
+  this.lastActive = this.lastActive || now;
+  this.leaveHistory = this.leaveHistory || [];
+
+  next();
+});
+
 // Helper methods for MemberActivity
 memberActivitySchema.methods.updateMessageStats = async function (channelId) {
   const now = new Date();
@@ -152,21 +210,32 @@ memberActivitySchema.methods.calculateActivityScore = function () {
   try {
     const now = new Date();
 
+    // Ensure all required properties exist with defaults
+    this.messageStats = this.messageStats || {};
+    this.voiceStats = this.voiceStats || {};
+    this.threadParticipation = this.threadParticipation || {};
+
+    // Set default values for all numeric fields
+    const messageCount = Number(this.messageStats.totalCount) || 0;
+    const voiceMinutes = Number(this.voiceStats.totalMinutes) || 0;
+    const threadsCreated = Number(this.threadParticipation.created) || 0;
+    const threadsJoined = Number(this.threadParticipation.joined) || 0;
+    const threadMessages =
+      Number(this.threadParticipation.messagesInThreads) || 0;
+
     // Calculate days since join with validation
-    const joinDate = new Date(this.joinTimestamp);
+    const joinDate = new Date(this.joinTimestamp || now); // Fallback to now if missing
     const daysSinceJoin = Math.max(0, (now - joinDate) / (1000 * 60 * 60 * 24));
 
-    // Calculate base scores
-    const messageScore = Math.min(10000, this.messageStats.totalCount) * 2; // Cap at 10k messages
-    const voiceScore = Math.min(1440, this.voiceStats.totalMinutes); // Cap at 24 hours
+    // Calculate base scores with safe operations
+    const messageScore = Math.min(10000, messageCount) * 2; // Cap at 10k messages
+    const voiceScore = Math.min(1440, voiceMinutes); // Cap at 24 hours
     const threadScore = Math.min(
       1000,
-      this.threadParticipation.created * 5 +
-        this.threadParticipation.joined * 2 +
-        this.threadParticipation.messagesInThreads
+      threadsCreated * 5 + threadsJoined * 2 + threadMessages
     );
 
-    // Calculate recency bonus (up to 2x multiplier for very recent activity)
+    // Calculate recency bonus with validation
     let recencyBonus = 0;
     if (this.lastActive) {
       const lastActiveDate = new Date(this.lastActive);
@@ -174,17 +243,28 @@ memberActivitySchema.methods.calculateActivityScore = function () {
         0,
         (now - lastActiveDate) / (1000 * 60 * 60)
       );
-      recencyBonus = Math.max(0, 100 - hoursSinceActive); // More granular bonus based on hours
+      recencyBonus = Math.max(0, Math.min(100, 100 - hoursSinceActive)); // Clamp between 0-100
     }
 
-    // Calculate final score with bounds
+    // Calculate final score with bounds and safety checks
     const baseScore = messageScore + voiceScore + threadScore;
     const multiplier = 1 + recencyBonus / 100;
     const decay = Math.max(1, Math.log(daysSinceJoin + 1));
 
     const finalScore = Math.round((baseScore * multiplier) / decay);
 
-    // Ensure score is within reasonable bounds
+    // Ensure score is a valid number and within bounds
+    if (isNaN(finalScore)) {
+      console.error("Invalid score calculation:", {
+        messageScore,
+        voiceScore,
+        threadScore,
+        multiplier,
+        decay,
+      });
+      return 0;
+    }
+
     return Math.max(0, Math.min(10000, finalScore));
   } catch (error) {
     console.error("Error calculating activity score:", error);

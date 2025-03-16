@@ -2,6 +2,9 @@ import { ActivityType } from "discord.js";
 import { runSystemChecks } from "../utils/spirits/systemCheck.js";
 import { SPIRIT_POWERS } from "../utils/spirits/spiritPowers.js";
 import { Logger } from "../utils/Logger.js";
+import pkg from "@napi-rs/canvas";
+const { GlobalFonts } = pkg;
+import { client } from "../bot.js";
 
 export default async (client) => {
   try {
@@ -122,3 +125,24 @@ export default async (client) => {
     Logger.error("Error during bot startup:", error);
   }
 };
+
+client.on("ready", () => {
+  // StatHandlers configuration
+  const config = {
+    fonts: {
+      path: "Fonts/Baloo-Regular.ttf",
+      family: "Baloo",
+    },
+  };
+
+  // Initialize fonts
+  try {
+    GlobalFonts.registerFromPath(config.fonts.path, config.fonts.family);
+    console.log("Successfully registered fonts for stats handlers");
+  } catch (err) {
+    console.warn(
+      "Could not load custom font, falling back to system font:",
+      err
+    );
+  }
+});

@@ -9,6 +9,7 @@ import {
   handleOverview,
   handleMembers,
   handleActivity,
+  handleChannels,
   timeframes,
 } from "../utils/statsViewHandlers.js";
 
@@ -59,15 +60,11 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       // Run the command with error handling
-      try {
-        await command.run({ client, interaction });
+      await command.run({ client, interaction }).catch(handleCommandError);
 
-        // Set cooldown after successful execution
-        if (!command.noCooldownOnFail) {
-          await setCooldown(interaction, command);
-        }
-      } catch (error) {
-        handleCommandError(interaction, error);
+      // Set cooldown after successful execution
+      if (!command.noCooldownOnFail) {
+        await setCooldown(interaction, command).catch(console.error);
       }
     }
 
@@ -76,39 +73,36 @@ client.on("interactionCreate", async (interaction) => {
       interaction.isStringSelectMenu() &&
       interaction.customId === "timeframe_select"
     ) {
-      await handleTimeframeSelection(interaction).catch((error) => {
+      await handleTimeframeSelection(interaction).catch(async (error) => {
         console.error("Error handling timeframe selection:", error);
-        return interaction
-          .editReply({
+        try {
+          await interaction.editReply({
             content: "An error occurred while updating the statistics.",
             ephemeral: true,
-          })
-          .catch(() => null);
+          });
+        } catch (err) {
+          console.error("Error sending error response:", err);
+        }
       });
     }
   } catch (error) {
-    // Handle any unexpected errors
     console.error("An error occurred in interactionCreate event:", error);
     try {
-      let errorMessage = {
-        content: "❌ An unexpected error occurred. Please try again later.",
+      const errorMessage = {
+        content:
+          error.message?.includes("chart") ||
+          error.message?.includes("panicked") ||
+          error.message?.includes("None value") ||
+          error.message?.includes("cannot read properties of null")
+            ? "❌ Unable to generate statistics chart. Statistics will be available once more data is collected."
+            : "❌ An unexpected error occurred. Please try again later.",
         ephemeral: true,
       };
 
-      // Special handling for canvas/chart generation errors
-      if (
-        error.message?.includes("panicked") ||
-        error.message?.includes("None value") ||
-        error.message?.includes("cannot read properties of null")
-      ) {
-        errorMessage.content =
-          "❌ Unable to generate statistics chart. Statistics will be available once more data is collected.";
-      }
-
-      if (interaction.deferred) {
-        await interaction.editReply(errorMessage);
-      } else {
+      if (!interaction.replied && !interaction.deferred) {
         await interaction.reply(errorMessage);
+      } else {
+        await interaction.editReply(errorMessage);
       }
     } catch (err) {
       console.error("Error sending error message:", err);
@@ -117,48 +111,63 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 async function handleTimeframeSelection(interaction) {
-  await interaction.deferUpdate();
+  try {
+    await interaction.deferUpdate();
 
-  const timeframe = interaction.values[0];
-  const message = interaction.message;
-  const oldEmbed = message.embeds[0];
-  const components = [...message.components];
-  const files = [];
+    const timeframe = interaction.values[0];
+    const message = interaction.message;
+    const oldEmbed = message.embeds[0];
+    const components = [...message.components];
+    const files = [];
 
-  // Get the current view from the embed title
-  const titleParts = oldEmbed.title.split(" - ");
-  const currentView = titleParts[1].toLowerCase();
+    // Get the current view from the embed title
+    const titleParts = oldEmbed.title.split(" - ");
+    const currentView = titleParts[1].toLowerCase();
 
-  // Create new embed with updated title
-  const embed = EmbedBuilder.from(oldEmbed).setTitle(
-    `Server Statistics - ${
-      currentView.charAt(0).toUpperCase() + currentView.slice(1)
-    } - ${timeframes[timeframe].label}`
-  );
+    // Create new embed with updated title
+    const embed = EmbedBuilder.from(oldEmbed).setTitle(
+      `Server Statistics - ${
+        currentView.charAt(0).toUpperCase() + currentView.slice(1)
+      } - ${timeframes[timeframe].label}`
+    );
 
-  // Re-run the appropriate handler
-  switch (currentView) {
-    case "overview":
-      files.push(...(await handleOverview(interaction, embed, timeframe)));
-      break;
-    case "members":
-      files.push(...(await handleMembers(interaction, embed, timeframe)));
-      break;
-    case "activity":
-      files.push(...(await handleActivity(interaction, embed, timeframe)));
-      break;
+    // Re-run the appropriate handler
+    switch (currentView) {
+      case "overview":
+        files.push(...(await handleOverview(interaction, embed, timeframe)));
+        break;
+      case "members":
+        files.push(...(await handleMembers(interaction, embed, timeframe)));
+        break;
+      case "activity":
+        files.push(...(await handleActivity(interaction, embed, timeframe)));
+        break;
+      case "channels":
+        files.push(...(await handleChannels(interaction, embed, timeframe)));
+        break;
+      default:
+        throw new Error(`Invalid view: ${currentView}`);
+    }
+
+    // Update timeframe menu's selected option
+    const timeframeMenu = components[components.length - 1].components[0];
+    timeframeMenu.options.forEach((option) => {
+      option.default = option.value === timeframe;
+    });
+
+    // Send the updated reply
+    await interaction.editReply({
+      embeds: [embed],
+      components,
+      files,
+    });
+  } catch (error) {
+    console.error("Error in handleTimeframeSelection:", error);
+    await interaction
+      .editReply({
+        content: "An error occurred while updating the statistics.",
+        ephemeral: true,
+      })
+      .catch(console.error);
   }
-
-  // Update timeframe menu's selected option
-  const timeframeMenu = components[components.length - 1].components[0];
-  timeframeMenu.options.forEach((option) => {
-    option.default = option.value === timeframe;
-  });
-
-  // Send the updated reply
-  await interaction.editReply({
-    embeds: [embed],
-    components,
-    files,
-  });
 }

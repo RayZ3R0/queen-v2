@@ -27,13 +27,12 @@ const pageCache = new LRUCache({
   ttl: 1000 * 60 * 5, // 5 minutes
 });
 
-export default {
+const getCommandData = () => ({
   name: "serverstats",
   category: "Stats",
   description: "View detailed server statistics",
   userPermissions: [PermissionFlagsBits.ViewChannel],
   botPermissions: [PermissionFlagsBits.ViewChannel],
-
   data: new SlashCommandBuilder()
     .setName("serverstats")
     .setDescription("View detailed server statistics")
@@ -61,93 +60,132 @@ export default {
           { name: "All Time", value: "all" }
         )
     ),
+});
+
+export default {
+  ...getCommandData(),
 
   run: async ({ client, interaction }) => {
-    await interaction.deferReply();
+    await interaction.deferReply().catch(console.error);
 
-    let view, timeframe, cacheKey, cachedData;
     try {
-      view = interaction.options.getString("view");
-      timeframe = interaction.options.getString("timeframe") || "7d";
+      const view = interaction.options.getString("view");
+      const timeframe = interaction.options.getString("timeframe") || "7d";
+      const cacheKey = `${interaction.guildId}_${view}_${timeframe}`;
 
       // Check cache first
-      cacheKey = `${interaction.guildId}_${view}_${timeframe}`;
-      cachedData = pageCache.get(cacheKey);
-
+      const cachedData = pageCache.get(cacheKey);
       if (cachedData) {
-        await interaction.editReply(cachedData);
-        return;
+        return await interaction.editReply(cachedData);
       }
 
-      let embed = new EmbedBuilder()
-        .setColor(client.config.embed.color)
-        .setTitle(
-          `Server Statistics - ${
-            view.charAt(0).toUpperCase() + view.slice(1)
-          } - ${timeframes[timeframe].label}`
-        )
-        .setTimestamp();
+      const embed = await generateEmbed({
+        client,
+        interaction,
+        view,
+        timeframe,
+      });
+      const files = await generateFiles({
+        interaction,
+        embed,
+        view,
+        timeframe,
+      });
+      const components = generateComponents(timeframe);
 
-      // Handle the specific view and get chart files
-      let files = [];
-      switch (view) {
-        case "overview":
-          files = await handleOverview(interaction, embed, timeframe);
-          break;
-        case "members":
-          files = await handleMembers(interaction, embed, timeframe);
-          break;
-        case "activity":
-          files = await handleActivity(interaction, embed, timeframe);
-          break;
-        case "channels":
-          files = await handleChannels(interaction, embed, timeframe);
-          break;
-      }
-
-      // Set image for the chart if files exist
-      if (files.length > 0) {
-        const chartFileName = {
-          overview: "trend.png",
-          members: "member_trend.png",
-          activity: "activity_scores.png",
-          channels: "channel_stats.png",
-        }[view];
-
-        embed.setImage(`attachment://${chartFileName}`);
-      }
-
-      // Add timeframe selector
-      const components = [
-        new ActionRowBuilder().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId("timeframe_select")
-            .setPlaceholder("Select Timeframe")
-            .addOptions(
-              Object.entries(timeframes).map(([value, data]) => ({
-                label: data.label,
-                value: value,
-                default: value === timeframe,
-              }))
-            )
-        ),
-      ];
-
-      const reply = {
+      const replyOptions = {
         embeds: [embed],
         components,
         files,
       };
 
-      // Cache the response
-      pageCache.set(cacheKey, reply);
-      await interaction.editReply(reply);
+      // Cache and send response
+      pageCache.set(cacheKey, replyOptions);
+      await interaction.editReply(replyOptions);
     } catch (error) {
       console.error("Error in serverstats command:", error);
-      return await interaction.editReply({
+      if (!interaction.deferred) {
+        await interaction.deferReply();
+      }
+      await interaction.editReply({
         content: "An error occurred while fetching statistics.",
         ephemeral: true,
       });
     }
   },
 };
+
+function generateComponents(timeframe) {
+  try {
+    return [
+      new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId("timeframe_select")
+          .setPlaceholder("Select Timeframe")
+          .addOptions(
+            Object.entries(timeframes).map(([value, data]) => ({
+              label: data.label,
+              value: value,
+              default: value === timeframe,
+            }))
+          )
+      ),
+    ];
+  } catch (error) {
+    console.error("Error generating components:", error);
+    throw error;
+  }
+}
+
+async function generateEmbed({ client, interaction, view, timeframe }) {
+  try {
+    return new EmbedBuilder()
+      .setColor(client.config.embed.color)
+      .setTitle(
+        `Server Statistics - ${
+          view.charAt(0).toUpperCase() + view.slice(1)
+        } - ${timeframes[timeframe].label}`
+      )
+      .setTimestamp();
+  } catch (error) {
+    console.error("Error generating embed:", error);
+    throw error;
+  }
+}
+
+async function generateFiles({ interaction, embed, view, timeframe }) {
+  try {
+    const files = [];
+
+    switch (view) {
+      case "overview":
+        files.push(...(await handleOverview(interaction, embed, timeframe)));
+        break;
+      case "members":
+        files.push(...(await handleMembers(interaction, embed, timeframe)));
+        break;
+      case "activity":
+        files.push(...(await handleActivity(interaction, embed, timeframe)));
+        break;
+      case "channels":
+        files.push(...(await handleChannels(interaction, embed, timeframe)));
+        break;
+    }
+
+    if (files.length > 0) {
+      const chartFileName = {
+        overview: "trend.png",
+        members: "member_trend.png",
+        activity: "activity_scores.png",
+        channels: "channel_stats.png",
+      }[view];
+
+      embed.setImage(`attachment://${chartFileName}`);
+    }
+
+    return files;
+  } catch (error) {
+    console.error("Error generating files:", error);
+    throw error;
+  }
+}

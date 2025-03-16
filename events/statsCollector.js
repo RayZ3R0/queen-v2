@@ -9,15 +9,161 @@ let voiceStates = new Map(); // Track ongoing voice sessions
  */
 async function updateMemberActivity(guildId, userId, updateData = {}) {
   try {
-    const activity = await MemberActivity.findOneAndUpdate(
-      { guildId, userId },
-      updateData,
-      {
-        upsert: true,
-        new: true,
-        setDefaultsOnInsert: true,
+    // Validate numeric values in updateData
+    if (updateData.$inc) {
+      Object.values(updateData.$inc).forEach((value) => {
+        if (isNaN(value)) {
+          throw new Error("Invalid numeric value in update data");
+        }
+      });
+    }
+
+    // First try to find the existing document
+    let activity = await MemberActivity.findOne({ guildId, userId });
+
+    if (!activity) {
+      // If no document exists, we need to fetch the member to get joinTimestamp
+      try {
+        const guild = await client.guilds.fetch(guildId);
+        const member = await guild.members.fetch(userId);
+        const now = new Date();
+
+        activity = new MemberActivity({
+          guildId,
+          userId,
+          joinTimestamp: member.joinedTimestamp || now,
+          messageStats: {
+            totalCount: 0,
+            channelDistribution: new Map(),
+            hourlyActivity: new Map(),
+            weeklyActivity: new Map(),
+            firstMessageTimestamp: now,
+            lastMessageTimestamp: now,
+          },
+          voiceStats: {
+            totalMinutes: 0,
+            channelMinutes: new Map(),
+            hourlyActivity: new Map(),
+            weeklyActivity: new Map(),
+            lastActive: now,
+          },
+          threadParticipation: {
+            created: 0,
+            joined: 0,
+            messagesInThreads: 0,
+          },
+          lastActive: now,
+          activityScore: 0,
+          leaveHistory: [],
+        });
+      } catch (err) {
+        console.error("Error fetching member for joinTimestamp:", err);
+        // Create with current timestamp as fallback
+        const now = new Date();
+        activity = new MemberActivity({
+          guildId,
+          userId,
+          joinTimestamp: now, // Fallback to current time
+          messageStats: {
+            totalCount: 0,
+            channelDistribution: new Map(),
+            hourlyActivity: new Map(),
+            weeklyActivity: new Map(),
+            firstMessageTimestamp: now,
+            lastMessageTimestamp: now,
+          },
+          voiceStats: {
+            totalMinutes: 0,
+            channelMinutes: new Map(),
+            hourlyActivity: new Map(),
+            weeklyActivity: new Map(),
+            lastActive: now,
+          },
+          threadParticipation: {
+            created: 0,
+            joined: 0,
+            messagesInThreads: 0,
+          },
+          lastActive: now,
+          activityScore: 0,
+          leaveHistory: [],
+        });
       }
-    );
+    }
+
+    // Apply the updates with dot notation handling
+    if (updateData.$inc) {
+      Object.entries(updateData.$inc).forEach(([key, value]) => {
+        const parts = key.split(".");
+        let target = activity;
+
+        // Navigate to the nested property
+        for (let i = 0; i < parts.length - 1; i++) {
+          if (!target[parts[i]]) {
+            // Initialize missing objects/maps
+            if (
+              parts[i + 1] === "channelMinutes" ||
+              parts[i + 1] === "channelDistribution" ||
+              parts[i + 1] === "hourlyActivity" ||
+              parts[i + 1] === "weeklyActivity"
+            ) {
+              target[parts[i]] = { [parts[i + 1]]: new Map() };
+            } else {
+              target[parts[i]] = {};
+            }
+          }
+          target = target[parts[i]];
+        }
+
+        const finalKey = parts[parts.length - 1];
+        if (target instanceof Map) {
+          target.set(finalKey, (target.get(finalKey) || 0) + value);
+        } else {
+          target[finalKey] = (target[finalKey] || 0) + value;
+        }
+      });
+    }
+    if (updateData.$set) {
+      Object.entries(updateData.$set).forEach(([key, value]) => {
+        const parts = key.split(".");
+        let target = activity;
+
+        // Navigate to the nested property
+        for (let i = 0; i < parts.length - 1; i++) {
+          if (!target[parts[i]]) {
+            target[parts[i]] = {};
+          }
+          target = target[parts[i]];
+        }
+
+        // Set the final value
+        const finalKey = parts[parts.length - 1];
+
+        // Check if this is a Map field
+        if (
+          parts[parts.length - 2] === "channelMinutes" ||
+          parts[parts.length - 2] === "channelDistribution" ||
+          parts[parts.length - 2] === "hourlyActivity" ||
+          parts[parts.length - 2] === "weeklyActivity"
+        ) {
+          if (!(target instanceof Map)) {
+            target = new Map();
+          }
+          target.set(finalKey, value);
+        } else {
+          target[finalKey] = value;
+        }
+      });
+    }
+
+    await activity.save();
+
+    // Validate activity score after update
+    if (isNaN(activity.activityScore)) {
+      activity.activityScore = 0;
+      await activity.save();
+    }
+
     return activity;
   } catch (error) {
     console.error("Error updating member activity:", error);
@@ -75,11 +221,68 @@ client.on(Events.MessageCreate, async (message) => {
     });
 
     if (!memberActivity) {
-      memberActivity = new MemberActivity({
-        guildId: message.guild.id,
-        userId: message.author.id,
-        joinTimestamp: message.member.joinedAt,
-      });
+      try {
+        // Try to get member if not cached
+        const member = await message.guild.members.fetch(message.author.id);
+
+        memberActivity = new MemberActivity({
+          guildId: message.guild.id,
+          userId: message.author.id,
+          joinTimestamp: member.joinedAt || new Date(),
+          messageStats: {
+            totalCount: 0,
+            channelDistribution: new Map(),
+            hourlyActivity: new Map(),
+            weeklyActivity: new Map(),
+          },
+          voiceStats: {
+            totalMinutes: 0,
+            channelMinutes: new Map(),
+            hourlyActivity: new Map(),
+            weeklyActivity: new Map(),
+          },
+          threadParticipation: {
+            created: 0,
+            joined: 0,
+            messagesInThreads: 0,
+          },
+          lastActive: new Date(),
+          activityScore: 0,
+          leaveHistory: [],
+        });
+      } catch (err) {
+        console.error("Error fetching member data:", err);
+        // Create with fallback timestamp
+        const now = new Date();
+        memberActivity = new MemberActivity({
+          guildId: message.guild.id,
+          userId: message.author.id,
+          joinTimestamp: now,
+          messageStats: {
+            totalCount: 0,
+            channelDistribution: new Map(),
+            hourlyActivity: new Map(),
+            weeklyActivity: new Map(),
+            firstMessageTimestamp: now,
+            lastMessageTimestamp: now,
+          },
+          voiceStats: {
+            totalMinutes: 0,
+            channelMinutes: new Map(),
+            hourlyActivity: new Map(),
+            weeklyActivity: new Map(),
+            lastActive: now,
+          },
+          threadParticipation: {
+            created: 0,
+            joined: 0,
+            messagesInThreads: 0,
+          },
+          lastActive: now,
+          activityScore: 0,
+          leaveHistory: [],
+        });
+      }
     }
 
     // Update all stats at once
@@ -118,7 +321,17 @@ client.on(Events.MessageCreate, async (message) => {
     }
 
     // Recalculate activity score with new algorithm
-    memberActivity.activityScore = memberActivity.calculateActivityScore();
+    // Calculate and validate activity score
+    const newScore = memberActivity.calculateActivityScore();
+    if (!isNaN(newScore)) {
+      memberActivity.activityScore = newScore;
+    } else {
+      console.warn(
+        `Invalid activity score for ${message.author.tag}:`,
+        newScore
+      );
+      memberActivity.activityScore = 0;
+    }
 
     // Save all changes
     await memberActivity.save();
@@ -236,18 +449,33 @@ client.on(Events.GuildMemberAdd, async (member) => {
       await existingMember.save();
     } else {
       // This is a first join - create new record
+      const now = new Date();
       await MemberActivity.create({
         guildId: member.guild.id,
         userId: member.id,
-        joinTimestamp: member.joinedTimestamp || new Date(),
+        joinTimestamp: member.joinedTimestamp || now,
         messageStats: {
+          totalCount: 0,
           channelDistribution: new Map(),
           hourlyActivity: new Map(),
           weeklyActivity: new Map(),
+          firstMessageTimestamp: null,
+          lastMessageTimestamp: null,
         },
         voiceStats: {
+          totalMinutes: 0,
           channelMinutes: new Map(),
+          hourlyActivity: new Map(),
+          weeklyActivity: new Map(),
+          lastActive: null,
         },
+        threadParticipation: {
+          created: 0,
+          joined: 0,
+          messagesInThreads: 0,
+        },
+        activityScore: 0,
+        lastActive: now,
         leaveHistory: [],
       });
     }
@@ -306,7 +534,16 @@ setInterval(async () => {
       const members = await MemberActivity.find({ guildId });
       for (const member of members) {
         try {
-          member.activityScore = member.calculateActivityScore();
+          const newScore = member.calculateActivityScore();
+          if (!isNaN(newScore)) {
+            member.activityScore = newScore;
+          } else {
+            console.warn(
+              `Invalid periodic score update for member ${member.userId}:`,
+              newScore
+            );
+            member.activityScore = 0;
+          }
           await member.save();
         } catch (err) {
           console.error(

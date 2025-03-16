@@ -1,5 +1,43 @@
-import { createCanvas } from "@napi-rs/canvas";
+import pkg from "@napi-rs/canvas";
+import path from "path";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
 import { LRUCache } from "lru-cache";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const { createCanvas, GlobalFonts } = pkg;
+
+// Check and register custom font
+try {
+  // Check multiple possible font locations relative to current file
+  const possiblePaths = [
+    path.join(__dirname, "../Commands/Slash/Leveling/Fonts/Baloo-Regular.ttf"),
+    path.join(__dirname, "../fonts/Baloo-Regular.ttf"),
+    path.join(__dirname, "../Fonts/Baloo-Regular.ttf"),
+  ];
+
+  let fontLoaded = false;
+  for (const fontPath of possiblePaths) {
+    try {
+      if (GlobalFonts.registerFromPath(fontPath, "Baloo")) {
+        console.log("Successfully registered Baloo font from:", fontPath);
+        fontLoaded = true;
+        break;
+      }
+    } catch (err) {
+      console.debug(`Font not found at ${fontPath}`);
+    }
+  }
+
+  if (!fontLoaded) {
+    console.warn("Could not load Baloo font, falling back to system fonts");
+  }
+} catch (error) {
+  console.error("Error in font registration:", error);
+}
+
+// Fallback font configuration
+const FONT_FAMILY = GlobalFonts.has("Baloo") ? "Baloo" : "Arial";
 
 // Initialize chart dimensions
 const WIDTH = 800;
@@ -93,11 +131,11 @@ function createEmptyChart(title = "") {
   ctx.textBaseline = "middle";
 
   if (title) {
-    ctx.font = "bold 16px Arial";
+    ctx.font = `bold 16px ${FONT_FAMILY}`;
     ctx.fillText(title, WIDTH / 2, HEIGHT / 4);
   }
 
-  ctx.font = "14px Arial";
+  ctx.font = `14px ${FONT_FAMILY}`;
   ctx.fillText("No data available yet", WIDTH / 2, HEIGHT / 2);
   ctx.fillText(
     "Statistics will appear as data is collected",
@@ -129,7 +167,65 @@ function createChartCanvas() {
   ctx.fillStyle = "#2F3136";
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
+  // Set default text properties
+  ctx.font = `14px ${FONT_FAMILY}`;
+  ctx.textBaseline = "middle";
+
   return { canvas, ctx };
+}
+
+/**
+ * Determines if labels need to be rotated based on available space
+ */
+function shouldRotateLabels(ctx, labels, availableWidth) {
+  const totalWidth = labels.reduce((sum, label) => {
+    return sum + ctx.measureText(label).width + 10; // 10px padding
+  }, 0);
+  return totalWidth > availableWidth * 0.7;
+}
+
+/**
+ * Truncates text if it exceeds maxWidth
+ */
+function truncateText(ctx, text, maxWidth) {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+
+  let truncated = text;
+  while (
+    ctx.measureText(truncated + "...").width > maxWidth &&
+    truncated.length > 0
+  ) {
+    truncated = truncated.slice(0, -1);
+  }
+  return truncated + "...";
+}
+
+/**
+ * Draws x-axis labels with smart rotation and truncation
+ */
+function drawXAxisLabels(ctx, labels, x, y, width, rotated = false) {
+  const labelSpacing = width / (labels.length - 1);
+  const maxWidth = rotated ? 100 : labelSpacing * 0.9;
+
+  ctx.save();
+  ctx.textAlign = rotated ? "right" : "center";
+
+  labels.forEach((label, i) => {
+    const labelX = x + i * labelSpacing;
+    const truncatedLabel = truncateText(ctx, label, maxWidth);
+
+    ctx.save();
+    if (rotated) {
+      ctx.translate(labelX, y);
+      ctx.rotate(-Math.PI / 4);
+      ctx.fillText(truncatedLabel, 0, 0);
+    } else {
+      ctx.fillText(truncatedLabel, labelX, y);
+    }
+    ctx.restore();
+  });
+
+  ctx.restore();
 }
 
 /**
@@ -157,20 +253,31 @@ async function generateLineChart(labels, datasets, title = "") {
     // Draw title
     if (title) {
       ctx.fillStyle = "#FFFFFF";
-      ctx.font = "bold 16px Arial";
+      ctx.font = `bold 18px ${FONT_FAMILY}`;
       ctx.textAlign = "center";
       ctx.fillText(title, WIDTH / 2, margin / 2);
     }
 
+    // Calculate margins based on label rotation
+    const shouldRotate = shouldRotateLabels(ctx, labels, chartWidth);
+    const bottomMargin = shouldRotate ? margin * 2 : margin;
+    const effectiveHeight = HEIGHT - margin - bottomMargin;
+
     // Draw axes
     ctx.strokeStyle = "#FFFFFF";
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(margin, margin);
-    ctx.lineTo(margin, HEIGHT - margin);
-    ctx.lineTo(WIDTH - margin, HEIGHT - margin);
+    ctx.lineTo(margin, HEIGHT - bottomMargin);
+    ctx.lineTo(WIDTH - margin, HEIGHT - bottomMargin);
     ctx.stroke();
 
-    // Calculate scales with safety checks
+    // Draw grid lines
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+
+    // Calculate scales
     const allValues = datasets.flatMap((d) => d.data).map((v) => Number(v));
     const validValues = allValues.filter((v) => !isNaN(v) && isFinite(v));
 
@@ -183,7 +290,7 @@ async function generateLineChart(labels, datasets, title = "") {
     const minValue = Math.min(0, ...validValues);
     const valueRange = maxValue - minValue;
 
-    // Avoid division by zero and ensure valid scales
+    // Avoid division by zero
     const yScale = valueRange > 0 ? chartHeight / valueRange : chartHeight;
     const xStep =
       labels.length > 1 ? chartWidth / (labels.length - 1) : chartWidth;
@@ -198,9 +305,9 @@ async function generateLineChart(labels, datasets, title = "") {
       ctx.stroke();
     }
 
-    // Draw labels
+    // Draw y-axis labels
     ctx.fillStyle = "#FFFFFF";
-    ctx.font = "12px Arial";
+    ctx.font = `14px ${FONT_FAMILY}`;
     ctx.textAlign = "right";
     for (let i = 0; i <= 5; i++) {
       const value = Math.round((maxValue * i) / 5);
@@ -209,51 +316,40 @@ async function generateLineChart(labels, datasets, title = "") {
     }
 
     // Draw x-axis labels
-    ctx.textAlign = "center";
-    labels.forEach((label, i) => {
-      const x = margin + i * xStep;
-      ctx.fillText(label, x, HEIGHT - margin + 20);
-    });
+    ctx.fillStyle = "#FFFFFF";
+    ctx.font = `14px ${FONT_FAMILY}`;
+    drawXAxisLabels(
+      ctx,
+      labels,
+      margin,
+      HEIGHT - bottomMargin + 20,
+      chartWidth,
+      shouldRotate
+    );
 
     // Draw datasets
-    datasets.forEach((dataset, datasetIndex) => {
+    datasets.forEach((dataset) => {
       ctx.strokeStyle = dataset.borderColor || generateColors(1)[0];
       ctx.lineWidth = 2;
       ctx.beginPath();
 
       dataset.data.forEach((value, i) => {
         const x = margin + i * xStep;
-        let y =
-          margin + chartHeight - ((Number(value) || 0) - minValue) * yScale;
-
-        // Ensure y is within valid bounds
-        y = Math.max(margin, Math.min(HEIGHT - margin, y));
-
-        if (i === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
+        const y = margin + chartHeight - (Number(value) - minValue) * yScale;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
       });
 
       ctx.stroke();
 
-      // Draw points with validation
-      ctx.fillStyle = ctx.strokeStyle;
+      // Draw points
+      ctx.fillStyle = dataset.borderColor || generateColors(1)[0];
       dataset.data.forEach((value, i) => {
         const x = margin + i * xStep;
-        let y =
-          margin + chartHeight - ((Number(value) || 0) - minValue) * yScale;
-
-        // Ensure y is within valid bounds
-        y = Math.max(margin, Math.min(HEIGHT - margin, y));
-
-        // Only draw point if value is valid
-        if (!isNaN(value) && isFinite(value)) {
-          ctx.beginPath();
-          ctx.arc(x, y, 4, 0, Math.PI * 2);
-          ctx.fill();
-        }
+        const y = margin + chartHeight - (Number(value) - minValue) * yScale;
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.fill();
       });
     });
 
@@ -263,15 +359,10 @@ async function generateLineChart(labels, datasets, title = "") {
     datasets.forEach((dataset, i) => {
       const label = dataset.label || `Dataset ${i + 1}`;
       ctx.fillStyle = dataset.borderColor || generateColors(1)[0];
-
-      // Draw legend marker
       ctx.fillRect(legendX - 100, legendY - 8, 16, 16);
-
-      // Draw legend text
       ctx.fillStyle = "#FFFFFF";
       ctx.textAlign = "left";
       ctx.fillText(label, legendX - 80, legendY);
-
       legendX -= 120;
     });
 
@@ -314,7 +405,7 @@ async function generateBarChart(labels, datasets, title = "", stacked = false) {
     // Draw title
     if (title) {
       ctx.fillStyle = "#FFFFFF";
-      ctx.font = "bold 16px Arial";
+      ctx.font = `bold 18px ${FONT_FAMILY}`;
       ctx.textAlign = "center";
       ctx.fillText(title, WIDTH / 2, margin / 2);
     }
@@ -345,7 +436,7 @@ async function generateBarChart(labels, datasets, title = "", stacked = false) {
 
     // Draw y-axis labels
     ctx.fillStyle = "#FFFFFF";
-    ctx.font = "12px Arial";
+    ctx.font = `14px ${FONT_FAMILY}`;
     ctx.textAlign = "right";
     for (let i = 0; i <= 5; i++) {
       const value = Math.round((maxValue * i) / 5);
@@ -391,15 +482,10 @@ async function generateBarChart(labels, datasets, title = "", stacked = false) {
     datasets.forEach((dataset, i) => {
       const label = dataset.label || `Dataset ${i + 1}`;
       ctx.fillStyle = dataset.backgroundColor || generateColors(1, 0.8)[0];
-
-      // Draw legend marker
       ctx.fillRect(legendX - 100, legendY - 8, 16, 16);
-
-      // Draw legend text
       ctx.fillStyle = "#FFFFFF";
       ctx.textAlign = "left";
       ctx.fillText(label, legendX - 80, legendY);
-
       legendX -= 120;
     });
 
@@ -417,11 +503,15 @@ async function generateBarChart(labels, datasets, title = "", stacked = false) {
  */
 async function generatePieChart(labels, data, title = "") {
   try {
-    if (!Array.isArray(labels) || !Array.isArray(data)) {
-      throw new Error("Labels and data must be arrays");
+    const cacheKey = generateCacheKey("pie", { labels, data, title });
+
+    if (chartCache.has(cacheKey)) {
+      return chartCache.get(cacheKey);
     }
 
     if (
+      !Array.isArray(labels) ||
+      !Array.isArray(data) ||
       labels.length === 0 ||
       data.length === 0 ||
       labels.length !== data.length
@@ -429,10 +519,9 @@ async function generatePieChart(labels, data, title = "") {
       return createEmptyChart(title);
     }
 
-    const cacheKey = generateCacheKey("pie", { labels, data, title });
-
-    if (chartCache.has(cacheKey)) {
-      return chartCache.get(cacheKey);
+    const total = data.reduce((sum, value) => sum + (Number(value) || 0), 0);
+    if (total === 0) {
+      return createEmptyChart(title);
     }
 
     const { canvas, ctx } = createChartCanvas();
@@ -440,14 +529,9 @@ async function generatePieChart(labels, data, title = "") {
     // Draw title
     if (title) {
       ctx.fillStyle = "#FFFFFF";
-      ctx.font = "bold 16px Arial";
+      ctx.font = `bold 16px ${FONT_FAMILY}`;
       ctx.textAlign = "center";
       ctx.fillText(title, WIDTH / 2, 30);
-    }
-
-    const total = data.reduce((sum, value) => sum + value, 0);
-    if (total === 0) {
-      return createEmptyChart(title);
     }
 
     const centerX = WIDTH / 2;
@@ -489,14 +573,11 @@ async function generatePieChart(labels, data, title = "") {
 
       // Draw label
       ctx.fillStyle = "#FFFFFF";
-      ctx.font = "12px Arial";
+      ctx.font = `14px ${FONT_FAMILY}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(
-        `${labels[i]} (${Math.round((value / total) * 100)}%)`,
-        labelX,
-        labelY
-      );
+      const percentage = Math.round((value / total) * 100);
+      ctx.fillText(`${labels[i]} (${percentage}%)`, labelX, labelY);
 
       startAngle += sliceAngle;
     });

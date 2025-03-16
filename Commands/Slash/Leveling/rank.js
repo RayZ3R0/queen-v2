@@ -1,10 +1,21 @@
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import Canvas from "@napi-rs/canvas";
+import pkg from "@napi-rs/canvas";
+const { createCanvas, loadImage, GlobalFonts } = pkg;
 import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 import levelModel from "../../../schema/level.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Register font on module load
+try {
+  GlobalFonts.registerFromPath(
+    join(__dirname, "Fonts", "Baloo-Regular.ttf"),
+    "Sans Serif"
+  );
+} catch (err) {
+  console.warn("Could not load rank card font:", err);
+}
 
 export default {
   name: "rank",
@@ -114,14 +125,8 @@ export default {
 
 async function rankCard(interaction, options = {}) {
   try {
-    // Register the font (ensure the Fonts folder exists with Baloo-Regular.ttf)
-    Canvas.GlobalFonts.registerFromPath(
-      join(__dirname, "Fonts", "Baloo-Regular.ttf"),
-      "Sans Serif"
-    );
-
     const member = options.member;
-    const canvas = Canvas.createCanvas(1080, 400);
+    const canvas = createCanvas(1080, 400);
     const ctx = canvas.getContext("2d");
 
     const name = member.tag;
@@ -166,7 +171,7 @@ async function rankCard(interaction, options = {}) {
     ctx.clip();
     ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, 1080, 400);
-    const background = await Canvas.loadImage(BackGroundImg);
+    const background = await loadImage(BackGroundImg);
     ctx.globalAlpha = 0.7;
     ctx.drawImage(background, 0, 0, 1080, 400);
     ctx.restore();
@@ -176,7 +181,7 @@ async function rankCard(interaction, options = {}) {
     ctx.fillRect(40, 0, 240, canvas.height);
     ctx.globalAlpha = 1;
 
-    const avatar = await Canvas.loadImage(
+    const avatar = await loadImage(
       member.displayAvatarURL({ extension: "png", size: 512 })
     );
     ctx.save();
