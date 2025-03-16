@@ -76,63 +76,15 @@ client.on("interactionCreate", async (interaction) => {
       interaction.isStringSelectMenu() &&
       interaction.customId === "timeframe_select"
     ) {
-      try {
-        await interaction.deferUpdate();
-
-        const timeframe = interaction.values[0];
-        const message = interaction.message;
-        const oldEmbed = message.embeds[0];
-        const components = [...message.components];
-        const files = [];
-
-        // Get the current view from the embed title
-        const titleParts = oldEmbed.title.split(" - ");
-        const currentView = titleParts[1].toLowerCase();
-
-        // Create new embed with updated title
-        const embed = EmbedBuilder.from(oldEmbed).setTitle(
-          `Server Statistics - ${
-            currentView.charAt(0).toUpperCase() + currentView.slice(1)
-          } - ${timeframes[timeframe].label}`
-        );
-
-        // Re-run the appropriate handler
-        switch (currentView) {
-          case "overview":
-            files.push(
-              ...(await handleOverview(interaction, embed, timeframe))
-            );
-            break;
-          case "members":
-            files.push(...(await handleMembers(interaction, embed, timeframe)));
-            break;
-          case "activity":
-            files.push(
-              ...(await handleActivity(interaction, embed, timeframe))
-            );
-            break;
-        }
-
-        // Update timeframe menu's selected option
-        const timeframeMenu = components[components.length - 1].components[0];
-        timeframeMenu.options.forEach((option) => {
-          option.default = option.value === timeframe;
-        });
-
-        await interaction.editReply({
-          embeds: [embed],
-          components,
-          files,
-        });
-      } catch (error) {
+      await handleTimeframeSelection(interaction).catch((error) => {
         console.error("Error handling timeframe selection:", error);
-        await interaction
+        return interaction
           .editReply({
             content: "An error occurred while updating the statistics.",
             ephemeral: true,
           })
           .catch(() => null);
-      }
+      });
     }
   } catch (error) {
     // Handle any unexpected errors
@@ -163,3 +115,50 @@ client.on("interactionCreate", async (interaction) => {
     }
   }
 });
+
+async function handleTimeframeSelection(interaction) {
+  await interaction.deferUpdate();
+
+  const timeframe = interaction.values[0];
+  const message = interaction.message;
+  const oldEmbed = message.embeds[0];
+  const components = [...message.components];
+  const files = [];
+
+  // Get the current view from the embed title
+  const titleParts = oldEmbed.title.split(" - ");
+  const currentView = titleParts[1].toLowerCase();
+
+  // Create new embed with updated title
+  const embed = EmbedBuilder.from(oldEmbed).setTitle(
+    `Server Statistics - ${
+      currentView.charAt(0).toUpperCase() + currentView.slice(1)
+    } - ${timeframes[timeframe].label}`
+  );
+
+  // Re-run the appropriate handler
+  switch (currentView) {
+    case "overview":
+      files.push(...(await handleOverview(interaction, embed, timeframe)));
+      break;
+    case "members":
+      files.push(...(await handleMembers(interaction, embed, timeframe)));
+      break;
+    case "activity":
+      files.push(...(await handleActivity(interaction, embed, timeframe)));
+      break;
+  }
+
+  // Update timeframe menu's selected option
+  const timeframeMenu = components[components.length - 1].components[0];
+  timeframeMenu.options.forEach((option) => {
+    option.default = option.value === timeframe;
+  });
+
+  // Send the updated reply
+  await interaction.editReply({
+    embeds: [embed],
+    components,
+    files,
+  });
+}

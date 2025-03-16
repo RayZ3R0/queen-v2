@@ -65,13 +65,14 @@ export default {
   run: async ({ client, interaction }) => {
     await interaction.deferReply();
 
+    let view, timeframe, cacheKey, cachedData;
     try {
-      const view = interaction.options.getString("view");
-      const timeframe = interaction.options.getString("timeframe") || "7d";
+      view = interaction.options.getString("view");
+      timeframe = interaction.options.getString("timeframe") || "7d";
 
       // Check cache first
-      const cacheKey = `${interaction.guildId}_${view}_${timeframe}`;
-      const cachedData = pageCache.get(cacheKey);
+      cacheKey = `${interaction.guildId}_${view}_${timeframe}`;
+      cachedData = pageCache.get(cacheKey);
 
       if (cachedData) {
         await interaction.editReply(cachedData);
@@ -143,7 +144,7 @@ export default {
       await interaction.editReply(reply);
     } catch (error) {
       console.error("Error in serverstats command:", error);
-      await interaction.editReply({
+      return await interaction.editReply({
         content: "An error occurred while fetching statistics.",
         ephemeral: true,
       });
