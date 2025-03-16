@@ -87,12 +87,12 @@ client.on(Events.MessageCreate, async (message) => {
     memberActivity.messageStats.lastMessageTimestamp = new Date();
     memberActivity.lastActive = new Date();
 
-    // Update channel distribution
+    // Update channel distribution with string key
+    const channelId = message.channel.id.toString();
     const currentChannelCount =
-      memberActivity.messageStats.channelDistribution.get(message.channel.id) ||
-      0;
+      memberActivity.messageStats.channelDistribution.get(channelId) || 0;
     memberActivity.messageStats.channelDistribution.set(
-      message.channel.id,
+      channelId,
       currentChannelCount + 1
     );
 
@@ -156,7 +156,8 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
         await updateMemberActivity(guildId, userId, {
           $inc: {
             "voiceStats.totalMinutes": duration,
-            [`voiceStats.channelMinutes.${oldState.channelId}`]: duration,
+            [`voiceStats.channelMinutes.${oldState.channelId.toString()}`]:
+              duration,
           },
           $set: {
             "voiceStats.lastActive": new Date(),
@@ -180,7 +181,8 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
         await updateMemberActivity(guildId, userId, {
           $inc: {
             "voiceStats.totalMinutes": duration,
-            [`voiceStats.channelMinutes.${oldState.channelId}`]: duration,
+            [`voiceStats.channelMinutes.${oldState.channelId.toString()}`]:
+              duration,
           },
         });
 
@@ -200,14 +202,55 @@ client.on(Events.GuildMemberAdd, async (member) => {
   if (member.user.bot) return;
 
   try {
-    await updateMemberActivity(member.guild.id, member.id, {
-      joinTimestamp: new Date(),
-      $push: {
-        leaveHistory: {
-          rejoinedAt: new Date(),
-        },
-      },
+    // Check if member already exists
+    const existingMember = await MemberActivity.findOne({
+      guildId: member.guild.id,
+      userId: member.id,
     });
+
+    if (existingMember) {
+      // Find the latest leave entry that doesn't have a rejoin date
+      const lastLeave = existingMember.leaveHistory
+        .slice()
+        .reverse()
+        .find((entry) => entry.leftAt && !entry.rejoinedAt);
+
+      if (lastLeave) {
+        // Update only the matching leave entry
+        await MemberActivity.updateOne(
+          {
+            guildId: member.guild.id,
+            userId: member.id,
+            "leaveHistory.leftAt": lastLeave.leftAt,
+          },
+          {
+            $set: {
+              "leaveHistory.$.rejoinedAt": new Date(),
+            },
+          }
+        );
+      }
+
+      // Update last join timestamp
+      existingMember.joinTimestamp = member.joinedTimestamp || new Date();
+      await existingMember.save();
+    } else {
+      // This is a first join - create new record
+      await MemberActivity.create({
+        guildId: member.guild.id,
+        userId: member.id,
+        joinTimestamp: member.joinedTimestamp || new Date(),
+        messageStats: {
+          channelDistribution: new Map(),
+          hourlyActivity: new Map(),
+          weeklyActivity: new Map(),
+        },
+        voiceStats: {
+          channelMinutes: new Map(),
+        },
+        leaveHistory: [],
+      });
+    }
   } catch (error) {
     console.error("Error handling member join:", error);
   }
@@ -217,13 +260,23 @@ client.on(Events.GuildMemberRemove, async (member) => {
   if (member.user.bot) return;
 
   try {
-    await updateMemberActivity(member.guild.id, member.id, {
-      $push: {
-        leaveHistory: {
-          leftAt: new Date(),
-        },
-      },
+    const memberActivity = await MemberActivity.findOne({
+      guildId: member.guild.id,
+      userId: member.id,
     });
+
+    if (memberActivity) {
+      // Only add leave entry if the last one has a rejoinedAt date
+      const lastLeave =
+        memberActivity.leaveHistory[memberActivity.leaveHistory.length - 1];
+
+      if (!lastLeave || lastLeave.rejoinedAt) {
+        memberActivity.leaveHistory.push({
+          leftAt: new Date(),
+        });
+        await memberActivity.save();
+      }
+    }
   } catch (error) {
     console.error("Error handling member leave:", error);
   }

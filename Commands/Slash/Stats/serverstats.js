@@ -12,6 +12,13 @@ import {
   handleChannels,
   timeframes,
 } from "../../../utils/statsViewHandlers.js";
+
+// Validate imports exist
+if (!handleOverview || !handleMembers || !handleActivity || !handleChannels) {
+  throw new Error(
+    "Failed to import required handlers from statsViewHandlers.js"
+  );
+}
 import { LRUCache } from "lru-cache";
 
 // Cache for storing rendered pages

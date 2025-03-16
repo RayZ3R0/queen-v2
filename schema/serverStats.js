@@ -40,6 +40,9 @@ const memberActivitySchema = new mongoose.Schema(
       { guildId: 1, userId: 1 },
       { lastActive: 1 },
       { activityScore: -1 },
+      { joinTimestamp: -1 },
+      { "leaveHistory.leftAt": 1 },
+      { "leaveHistory.rejoinedAt": 1 },
     ],
   }
 );
