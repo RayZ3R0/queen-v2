@@ -146,31 +146,52 @@ memberActivitySchema.methods.updateMessageStats = async function (channelId) {
 };
 
 memberActivitySchema.methods.calculateActivityScore = function () {
-  const now = new Date();
-  const daysSinceJoin = (now - this.joinTimestamp) / (1000 * 60 * 60 * 24);
-  const messageScore = this.messageStats.totalCount * 2;
-  const voiceScore = this.voiceStats.totalMinutes;
-  const threadScore =
-    this.threadParticipation.created * 5 +
-    this.threadParticipation.joined * 2 +
-    this.threadParticipation.messagesInThreads;
+  try {
+    const now = new Date();
 
-  // Weight recent activity more heavily
-  const recencyBonus = this.lastActive
-    ? Math.max(0, 100 - (now - this.lastActive) / (1000 * 60 * 60 * 24))
-    : 0;
+    // Calculate days since join with validation
+    const joinDate = new Date(this.joinTimestamp);
+    const daysSinceJoin = Math.max(0, (now - joinDate) / (1000 * 60 * 60 * 24));
 
-  return Math.round(
-    ((messageScore + voiceScore + threadScore) * (1 + recencyBonus / 100)) /
-      Math.max(1, Math.log(daysSinceJoin + 1))
-  );
+    // Calculate base scores
+    const messageScore = Math.min(10000, this.messageStats.totalCount) * 2; // Cap at 10k messages
+    const voiceScore = Math.min(1440, this.voiceStats.totalMinutes); // Cap at 24 hours
+    const threadScore = Math.min(
+      1000,
+      this.threadParticipation.created * 5 +
+        this.threadParticipation.joined * 2 +
+        this.threadParticipation.messagesInThreads
+    );
+
+    // Calculate recency bonus (up to 2x multiplier for very recent activity)
+    let recencyBonus = 0;
+    if (this.lastActive) {
+      const lastActiveDate = new Date(this.lastActive);
+      const hoursSinceActive = Math.max(
+        0,
+        (now - lastActiveDate) / (1000 * 60 * 60)
+      );
+      recencyBonus = Math.max(0, 100 - hoursSinceActive); // More granular bonus based on hours
+    }
+
+    // Calculate final score with bounds
+    const baseScore = messageScore + voiceScore + threadScore;
+    const multiplier = 1 + recencyBonus / 100;
+    const decay = Math.max(1, Math.log(daysSinceJoin + 1));
+
+    const finalScore = Math.round((baseScore * multiplier) / decay);
+
+    // Ensure score is within reasonable bounds
+    return Math.max(0, Math.min(10000, finalScore));
+  } catch (error) {
+    console.error("Error calculating activity score:", error);
+    return 0;
+  }
 };
 
-export const MemberActivity = mongoose.model(
-  "MemberActivity",
-  memberActivitySchema
-);
-export const GuildSnapshot = mongoose.model(
-  "GuildSnapshot",
-  guildSnapshotSchema
-);
+// Create the models
+const MemberActivity = mongoose.model("MemberActivity", memberActivitySchema);
+const GuildSnapshot = mongoose.model("GuildSnapshot", guildSnapshotSchema);
+
+// Export the models
+export { MemberActivity, GuildSnapshot };

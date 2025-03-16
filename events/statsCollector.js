@@ -68,34 +68,63 @@ client.on(Events.MessageCreate, async (message) => {
 
   try {
     // Update member's message statistics
-    await updateMemberActivity(message.guild.id, message.author.id, {
-      $inc: { "messageStats.totalCount": 1 },
-      $set: {
-        "messageStats.lastMessageTimestamp": new Date(),
-        lastActive: new Date(),
-      },
+    // Get the member activity document
+    let memberActivity = await MemberActivity.findOne({
+      guildId: message.guild.id,
+      userId: message.author.id,
     });
 
+    if (!memberActivity) {
+      memberActivity = new MemberActivity({
+        guildId: message.guild.id,
+        userId: message.author.id,
+        joinTimestamp: message.member.joinedAt,
+      });
+    }
+
+    // Update all stats at once
+    memberActivity.messageStats.totalCount++;
+    memberActivity.messageStats.lastMessageTimestamp = new Date();
+    memberActivity.lastActive = new Date();
+
     // Update channel distribution
-    await MemberActivity.findOneAndUpdate(
-      { guildId: message.guild.id, userId: message.author.id },
-      {
-        $inc: { [`messageStats.channelDistribution.${message.channel.id}`]: 1 },
-      }
+    const currentChannelCount =
+      memberActivity.messageStats.channelDistribution.get(message.channel.id) ||
+      0;
+    memberActivity.messageStats.channelDistribution.set(
+      message.channel.id,
+      currentChannelCount + 1
     );
 
-    // Update hourly and daily activity
-    const hour = new Date().getHours();
-    const day = new Date().getDay();
+    // Update hourly and weekly activity
+    const now = new Date();
+    const hour = now.getHours();
+    const day = now.getDay();
 
-    await MemberActivity.findOneAndUpdate(
-      { guildId: message.guild.id, userId: message.author.id },
-      {
-        $inc: {
-          [`messageStats.hourlyActivity.${hour}`]: 1,
-          [`messageStats.weeklyActivity.${day}`]: 1,
-        },
-      }
+    const hourKey = hour.toString();
+    const dayKey = day.toString();
+
+    const hourlyCount =
+      memberActivity.messageStats.hourlyActivity.get(hourKey) || 0;
+    const weeklyCount =
+      memberActivity.messageStats.weeklyActivity.get(dayKey) || 0;
+
+    memberActivity.messageStats.hourlyActivity.set(hourKey, hourlyCount + 1);
+    memberActivity.messageStats.weeklyActivity.set(dayKey, weeklyCount + 1);
+
+    // Update first message timestamp if not set
+    if (!memberActivity.messageStats.firstMessageTimestamp) {
+      memberActivity.messageStats.firstMessageTimestamp = now;
+    }
+
+    // Recalculate activity score with new algorithm
+    memberActivity.activityScore = memberActivity.calculateActivityScore();
+
+    // Save all changes
+    await memberActivity.save();
+
+    console.debug(
+      `Updated activity score for ${message.author.tag}: ${memberActivity.activityScore}`
     );
   } catch (error) {
     console.error("Error handling message event:", error);
@@ -213,14 +242,33 @@ client.on(Events.ThreadCreate, async (thread) => {
   }
 });
 
-// Periodic Snapshots
+// Periodic Snapshots and Score Updates
 setInterval(async () => {
   try {
     for (const [guildId, guild] of client.guilds.cache) {
+      // Create snapshot
       await createGuildSnapshot(guild, "1h");
+
+      // Update activity scores for all members
+      const members = await MemberActivity.find({ guildId });
+      for (const member of members) {
+        try {
+          member.activityScore = member.calculateActivityScore();
+          await member.save();
+        } catch (err) {
+          console.error(
+            `Error updating activity score for member ${member.userId}:`,
+            err
+          );
+        }
+      }
+
+      console.log(
+        `Updated activity scores for ${members.length} members in ${guild.name}`
+      );
     }
   } catch (error) {
-    console.error("Error creating periodic snapshots:", error);
+    console.error("Error in periodic updates:", error);
   }
 }, 60 * 60 * 1000); // Every hour
 

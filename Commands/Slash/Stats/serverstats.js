@@ -9,6 +9,7 @@ import {
   handleOverview,
   handleMembers,
   handleActivity,
+  handleChannels,
   timeframes,
 } from "../../../utils/statsViewHandlers.js";
 import { LRUCache } from "lru-cache";
@@ -37,7 +38,8 @@ export default {
         .addChoices(
           { name: "Overview", value: "overview" },
           { name: "Members", value: "members" },
-          { name: "Activity", value: "activity" }
+          { name: "Activity", value: "activity" },
+          { name: "Channels", value: "channels" }
         )
     )
     .addStringOption((option) =>
@@ -90,6 +92,21 @@ export default {
         case "activity":
           files = await handleActivity(interaction, embed, timeframe);
           break;
+        case "channels":
+          files = await handleChannels(interaction, embed, timeframe);
+          break;
+      }
+
+      // Set image for the chart if files exist
+      if (files.length > 0) {
+        const chartFileName = {
+          overview: "trend.png",
+          members: "member_trend.png",
+          activity: "activity_scores.png",
+          channels: "channel_stats.png",
+        }[view];
+
+        embed.setImage(`attachment://${chartFileName}`);
       }
 
       // Add timeframe selector
