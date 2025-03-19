@@ -6,12 +6,17 @@ import {
   handleVoiceUpdate,
   cleanupVoiceStates,
 } from "../utils/statsUtils.js";
+import GuildConfig from "../schema/guildConfig.js";
 
 // Message tracking
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
 
   try {
+    // Check if channel is ignored
+    const guildConfig = await GuildConfig.getOrCreate(message.guild.id);
+    if (guildConfig.isChannelIgnored(message.channel.id)) return;
+
     const now = new Date();
     const hour = now.getHours();
     const day = now.getDay();
@@ -34,7 +39,24 @@ client.on(Events.MessageCreate, async (message) => {
 });
 
 // Voice state tracking
-client.on(Events.VoiceStateUpdate, handleVoiceUpdate);
+client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
+  if (!newState.guild || newState.member.user.bot) return;
+
+  try {
+    // Check if new channel is ignored
+    if (newState.channelId) {
+      const guildConfig = await GuildConfig.getOrCreate(newState.guild.id);
+      if (guildConfig.isChannelIgnored(newState.channelId)) {
+        // If moving to an ignored channel, treat it as leaving voice
+        newState.channelId = null;
+      }
+    }
+
+    handleVoiceUpdate(oldState, newState);
+  } catch (error) {
+    console.error("Error handling voice state update:", error);
+  }
+});
 
 // Member tracking
 client.on(Events.GuildMemberAdd, async (member) => {
@@ -74,7 +96,11 @@ client.on(Events.GuildMemberRemove, async (member) => {
 setInterval(async () => {
   try {
     for (const [guildId, guild] of client.guilds.cache) {
-      await createGuildSnapshot(guild, "1h");
+      // Get guild config to check for ignored channels
+      const guildConfig = await GuildConfig.getOrCreate(guildId);
+
+      // Pass ignored channels to snapshot creation
+      await createGuildSnapshot(guild, "1h", guildConfig.ignoredChannels);
     }
   } catch (error) {
     console.error("Error creating periodic snapshots:", error);

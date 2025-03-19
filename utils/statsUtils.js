@@ -35,11 +35,38 @@ export async function updateMemberActivity(guildId, userId, updateData = {}) {
 /**
  * Creates a snapshot of guild statistics
  */
-export async function createGuildSnapshot(guild, interval = "1h") {
+export async function createGuildSnapshot(
+  guild,
+  interval = "1h",
+  ignoredChannels = []
+) {
   try {
-    // Get total message count
+    // Get total message count excluding ignored channels
     const messageStats = await MemberActivity.aggregate([
       { $match: { guildId: guild.id } },
+      {
+        $project: {
+          messageStats: {
+            totalCount: {
+              $sum: {
+                $map: {
+                  input: {
+                    $objectToArray: "$messageStats.channelDistribution",
+                  },
+                  as: "channel",
+                  in: {
+                    $cond: [
+                      { $in: ["$$channel.k", ignoredChannels] },
+                      0,
+                      "$$channel.v",
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
       {
         $group: {
           _id: null,
