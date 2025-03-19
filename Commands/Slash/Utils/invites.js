@@ -1,7 +1,6 @@
 import { SlashCommandBuilder } from "discord.js";
 import { EmbedBuilder } from "discord.js";
 import { InviteUsageModel } from "../../../schema/inviteTracker.js";
-import InviteManager from "../../../utils/inviteManager.js";
 
 export default {
   name: "invites",
@@ -44,8 +43,7 @@ export default {
         inviterId: targetUser.id,
       })
         .sort({ joinedAt: -1 })
-        .limit(10)
-        .populate("invitedId", "tag");
+        .limit(10);
 
       // Create embed
       const embed = new EmbedBuilder()
@@ -60,7 +58,9 @@ export default {
             `Fake Invites: ${stats.fake}`,
             `Bonus Invites: ${stats.bonus}`,
             `Currently Active: ${stats.active}`,
-            `Real Invites: ${stats.real}`,
+            `Real Invites: ${
+              stats.real ?? stats.total - stats.left - stats.fake + stats.bonus
+            }`,
           ].join("\n"),
           inline: false,
         })
@@ -75,15 +75,19 @@ export default {
         const recentInvitesText = recentInvites
           .map((invite) => {
             const status = invite.leftAt ? "❌ Left" : "✅ Active";
-            return `${status} | <@${invite.invitedId}> (${new Date(
-              invite.joinedAt
-            ).toLocaleDateString()})`;
+            const joinDate = new Date(invite.joinedAt).toLocaleDateString();
+            const leftDate = invite.leftAt
+              ? new Date(invite.leftAt).toLocaleDateString()
+              : null;
+            return `${status} | <@${invite.invitedId}> | Joined: ${joinDate}${
+              leftDate ? ` | Left: ${leftDate}` : ""
+            }`;
           })
           .join("\n");
 
         embed.addFields({
           name: "🔍 Recent Invites",
-          value: recentInvitesText,
+          value: recentInvitesText || "No recent invites",
           inline: false,
         });
       }
