@@ -19,6 +19,39 @@ const guildConfigSchema = new mongoose.Schema(
         message: "Invalid channel ID format or duplicate channels detected",
       },
     },
+    ignoredLockdownRoles: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: function (roles) {
+          // Ensure all role IDs are strings and unique
+          const uniqueRoles = new Set(roles);
+          return (
+            roles.every((id) => typeof id === "string" && /^\d+$/.test(id)) &&
+            uniqueRoles.size === roles.length
+          );
+        },
+        message: "Invalid role ID format or duplicate roles detected",
+      },
+    },
+    lockdownState: {
+      type: Map,
+      of: {
+        channelId: String,
+        permissions: [
+          {
+            roleId: String,
+            allowed: [String],
+            denied: [String],
+          },
+        ],
+      },
+      default: new Map(),
+    },
+    isLockedDown: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
@@ -43,6 +76,46 @@ guildConfigSchema.methods.removeIgnoredChannel = async function (channelId) {
 
 guildConfigSchema.methods.isChannelIgnored = function (channelId) {
   return this.ignoredChannels.includes(channelId);
+};
+
+// Lockdown role management methods
+guildConfigSchema.methods.addIgnoredLockdownRole = async function (roleId) {
+  if (!this.ignoredLockdownRoles.includes(roleId)) {
+    this.ignoredLockdownRoles.push(roleId);
+    return await this.save();
+  }
+  return this;
+};
+
+guildConfigSchema.methods.removeIgnoredLockdownRole = async function (roleId) {
+  this.ignoredLockdownRoles = this.ignoredLockdownRoles.filter(
+    (id) => id !== roleId
+  );
+  return await this.save();
+};
+
+guildConfigSchema.methods.isRoleIgnoredInLockdown = function (roleId) {
+  return this.ignoredLockdownRoles.includes(roleId);
+};
+
+// Lockdown state management methods
+guildConfigSchema.methods.storeLockdownState = async function (
+  channelId,
+  permissions
+) {
+  this.lockdownState.set(channelId, permissions);
+  this.isLockedDown = true;
+  return await this.save();
+};
+
+guildConfigSchema.methods.getLockdownState = function (channelId) {
+  return this.lockdownState.get(channelId);
+};
+
+guildConfigSchema.methods.clearLockdownState = async function () {
+  this.lockdownState.clear();
+  this.isLockedDown = false;
+  return await this.save();
 };
 
 // Static method to get or create guild config
