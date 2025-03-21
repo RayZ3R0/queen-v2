@@ -273,7 +273,7 @@ export default {
 
           // Log the lockdown disable
           const logChannel = interaction.guild.channels.cache.find(
-            (channel) => channel.name === "mod-logs"
+            (channel) => channel.name === "server-logs"
           );
 
           if (logChannel) {
