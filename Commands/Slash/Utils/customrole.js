@@ -11,6 +11,10 @@ import {
   ComponentType,
 } from "discord.js";
 import CustomRoles from "../../../schema/customRoles.js";
+import {
+  createErrorEmbed,
+  createSuccessEmbed,
+} from "../../../utils/imageProcessor.js";
 
 export default {
   name: "customrole",
