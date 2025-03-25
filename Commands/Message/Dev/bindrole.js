@@ -55,7 +55,7 @@ export default {
 
       // Find the level roles divider position
       const dividerRole = message.guild.roles.cache.find(
-        (r) => r.name === "--------------𝓛𝓮𝓿𝓮𝓵 𝓡𝓸𝓵𝓮𝓼--------------"
+        (r) => r.name === "Server Booster"
       );
 
       if (!dividerRole) {
