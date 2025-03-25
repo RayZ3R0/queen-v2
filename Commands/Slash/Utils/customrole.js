@@ -12,9 +12,11 @@ import {
 } from "discord.js";
 import CustomRoles from "../../../schema/customRoles.js";
 import {
-  createErrorEmbed,
-  createSuccessEmbed,
-} from "../../../utils/imageProcessor.js";
+  setRoleAboveDivider,
+  createRoleErrorEmbed,
+  createRoleSuccessEmbed,
+  LEVEL_ROLES_DIVIDER,
+} from "../../../utils/roleUtils.js";
 
 export default {
   name: "customrole",
@@ -35,16 +37,16 @@ export default {
 
   run: async ({ client, interaction }) => {
     try {
-      if (!interaction.member.premiumSince) {
-        return await interaction.reply({
-          embeds: [
-            createErrorEmbed(
-              "You need to be a server booster to use this command."
-            ),
-          ],
-          ephemeral: true,
-        });
-      }
+      // if (!interaction.member.premiumSince) {
+      //   return await interaction.reply({
+      //     embeds: [
+      //       createRoleErrorEmbed(
+      //         "You need to be a server booster to use this command."
+      //       ),
+      //     ],
+      //     ephemeral: true,
+      //   });
+      // }
 
       const subcommand = interaction.options.getSubcommand();
       const customRole = await CustomRoles.findOne({
@@ -282,34 +284,26 @@ export default {
           return;
         }
 
-        // Find the level roles divider position
-        const dividerRole = await interaction.guild.roles.cache.find(
-          (r) => r.name === "--------------𝓛𝓮𝓿𝓮𝓵 𝓡𝓸𝓵𝓮𝓼--------------"
-        );
-
-        if (!dividerRole) {
-          throw new Error("Could not find level roles divider");
-        }
-
-        // Create the role
+        // Create and position the role
         const newRole = await interaction.guild.roles.create({
           name: name,
           color: color,
           reason: `Custom role created for ${interaction.user.tag}`,
         });
 
-        // Set position above divider role
-        await newRole
-          .setPosition(dividerRole.position + 1)
-          .catch(async (error) => {
-            console.error("Error setting role position:", error);
-            // If position setting fails, at least we created the role
-            await interaction.reply({
-              content:
-                "⚠️ Role created but couldn't set position above level roles.",
-              ephemeral: true,
-            });
+        try {
+          await setRoleAboveDivider(newRole, interaction.guild);
+        } catch (error) {
+          console.error("Error setting role position:", error);
+          await interaction.reply({
+            embeds: [
+              createRoleErrorEmbed(
+                "Role created but position could not be set above level roles."
+              ),
+            ],
+            ephemeral: true,
           });
+        }
 
         // Save to database
         await new CustomRoles({
