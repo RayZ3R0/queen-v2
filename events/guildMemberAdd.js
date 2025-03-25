@@ -29,7 +29,7 @@ client.on("guildMemberAdd", async (member) => {
           .setColor("Red")
           .setTitle("Booster Custom Role Alert")
           .setDescription(
-            `${member.user.tag} rejoined but is no longer boosting.\nTheir custom role "${role.name}" has been removed.`
+            `${member.user.tag} rejoined but is no longer boosting.\nThey had custom role "${role.name}".`
           )
           .setTimestamp();
 
@@ -37,8 +37,8 @@ client.on("guildMemberAdd", async (member) => {
       }
 
       // Delete role and database entry
-      await role.delete("User no longer boosting");
-      await CustomRoles.findByIdAndDelete(customRole._id);
+      //   await role.delete("User no longer boosting");
+      //   await CustomRoles.findByIdAndDelete(customRole._id);
       return;
     }
 
