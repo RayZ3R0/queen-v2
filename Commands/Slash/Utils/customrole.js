@@ -287,13 +287,25 @@ export default {
           throw new Error("Could not find level roles divider");
         }
 
-        // Create the role above the level roles divider
+        // Create the role
         const newRole = await interaction.guild.roles.create({
           name: name,
           color: color,
-          position: dividerRole.position + 1, // Place it just above the divider
           reason: `Custom role created for ${interaction.user.tag}`,
         });
+
+        // Set position above divider role
+        await newRole
+          .setPosition(dividerRole.position + 1)
+          .catch(async (error) => {
+            console.error("Error setting role position:", error);
+            // If position setting fails, at least we created the role
+            await interaction.reply({
+              content:
+                "⚠️ Role created but couldn't set position above level roles.",
+              ephemeral: true,
+            });
+          });
 
         // Save to database
         await new CustomRoles({

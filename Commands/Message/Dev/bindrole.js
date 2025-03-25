@@ -65,7 +65,12 @@ export default {
       }
 
       // Move the role above the divider
-      await role.setPosition(dividerRole.position + 1);
+      await role.setPosition(dividerRole.position + 1).catch((error) => {
+        console.error("Error setting role position:", error);
+        message.channel.send({
+          content: "⚠️ Role bound but couldn't set position above level roles.",
+        });
+      });
 
       // Save the role binding
       await new CustomRoles({
