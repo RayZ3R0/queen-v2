@@ -18,6 +18,97 @@ client.on("interactionCreate", async (interaction) => {
     // Ignore interactions from bots
     if (interaction.user.bot) return;
 
+    // Handle Modal Submissions
+    if (interaction.type === InteractionType.ModalSubmit) {
+      // Try to find command by customId
+      let command = null;
+      const customId = interaction.customId;
+
+      // Check for specific modal patterns
+      if (
+        customId === "create_role_modal" ||
+        customId.startsWith("edit_name_") ||
+        customId.startsWith("edit_color_") ||
+        customId.startsWith("edit_icon_")
+      ) {
+        command = client.scommands.get("customrole");
+      } else {
+        // Generic lookup by command name prefix
+        command = client.scommands.find((cmd) =>
+          customId.startsWith(`${cmd.name}_`)
+        );
+      }
+
+      if (!command) {
+        // Fallback to message command name if available
+        command = client.scommands.get(
+          interaction.message?.interaction?.commandName
+        );
+      }
+
+      if (command?.modalHandler) {
+        try {
+          await command.modalHandler(interaction);
+        } catch (error) {
+          console.error(`Error in modal handler for ${command.name}:`, error);
+          // Only reply if we haven't already
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction
+              .reply({
+                content: "❌ An error occurred while processing your input.",
+                ephemeral: true,
+              })
+              .catch(console.error);
+          }
+        }
+        return;
+      }
+    }
+
+    // Handle Button Interactions
+    if (interaction.isButton()) {
+      // Try to find command by customId
+      let command = null;
+      const customId = interaction.customId;
+
+      // Check for specific button patterns
+      if (
+        customId.startsWith("edit_") ||
+        customId.startsWith("confirm_") ||
+        customId.startsWith("cancel_")
+      ) {
+        command = client.scommands.get("customrole");
+      } else {
+        // Generic lookup by command name prefix
+        command = client.scommands.find((cmd) =>
+          customId.startsWith(`${cmd.name}_`)
+        );
+      }
+
+      if (!command) {
+        // Fallback to message command name if available
+        command = client.scommands.get(
+          interaction.message?.interaction?.commandName
+        );
+      }
+
+      if (command?.buttonHandler) {
+        try {
+          await command.buttonHandler(interaction);
+        } catch (error) {
+          console.error(`Error in button handler for ${command.name}:`, error);
+          await interaction
+            .reply({
+              content:
+                "❌ An error occurred while processing the button interaction.",
+              ephemeral: true,
+            })
+            .catch(console.error);
+        }
+        return;
+      }
+    }
+
     // Handle slash commands
     if (interaction.type === InteractionType.ApplicationCommand) {
       const command = client.scommands.get(interaction.commandName);

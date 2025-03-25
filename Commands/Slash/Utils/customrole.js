@@ -30,15 +30,16 @@ export default {
   botPermissions: [PermissionFlagsBits.ManageRoles],
 
   run: async ({ client, interaction }) => {
-    await interaction.deferReply();
-
     try {
-      // Check if user is a booster
       if (!interaction.member.premiumSince) {
-        throw {
-          name: "ValidationError",
-          message: "You need to be a server booster to use this command.",
-        };
+        return await interaction.reply({
+          embeds: [
+            createErrorEmbed(
+              "You need to be a server booster to use this command."
+            ),
+          ],
+          ephemeral: true,
+        });
       }
 
       const subcommand = interaction.options.getSubcommand();
@@ -50,11 +51,11 @@ export default {
       switch (subcommand) {
         case "create":
           if (customRole) {
-            throw {
-              name: "ValidationError",
-              message:
+            return await interaction.reply({
+              content:
                 "You already have a custom role. Use `/customrole edit` to modify it.",
-            };
+              ephemeral: true,
+            });
           }
 
           // Create modal for role creation
@@ -85,20 +86,20 @@ export default {
 
         case "edit":
           if (!customRole) {
-            throw {
-              name: "ValidationError",
-              message:
+            return await interaction.reply({
+              content:
                 "You don't have a custom role yet. Use `/customrole create` first.",
-            };
+              ephemeral: true,
+            });
           }
 
           const role = await interaction.guild.roles.fetch(customRole.roleId);
           if (!role) {
             await CustomRoles.findByIdAndDelete(customRole._id);
-            throw {
-              name: "ValidationError",
-              message: "Your custom role was deleted. Please create a new one.",
-            };
+            return await interaction.reply({
+              content: "Your custom role was deleted. Please create a new one.",
+              ephemeral: true,
+            });
           }
 
           const editEmbed = new EmbedBuilder()
@@ -124,14 +125,10 @@ export default {
             new ButtonBuilder()
               .setCustomId("edit_color")
               .setLabel("Edit Color")
-              .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
-              .setCustomId("edit_icon")
-              .setLabel("Edit Icon")
               .setStyle(ButtonStyle.Primary)
           );
 
-          await interaction.editReply({
+          await interaction.reply({
             embeds: [editEmbed],
             components: [editButtons],
           });
@@ -139,10 +136,10 @@ export default {
 
         case "delete":
           if (!customRole) {
-            throw {
-              name: "ValidationError",
-              message: "You don't have a custom role to delete.",
-            };
+            return await interaction.reply({
+              content: "You don't have a custom role to delete.",
+              ephemeral: true,
+            });
           }
 
           const confirmButtons = new ActionRowBuilder().addComponents(
@@ -156,7 +153,7 @@ export default {
               .setStyle(ButtonStyle.Secondary)
           );
 
-          await interaction.editReply({
+          await interaction.reply({
             content:
               "⚠️ Are you sure you want to delete your custom role? This cannot be undone.",
             components: [confirmButtons],
@@ -164,14 +161,13 @@ export default {
           break;
       }
     } catch (error) {
-      if (error.name === "ValidationError") {
-        await interaction.editReply({ content: `❌ ${error.message}` });
-        return;
-      }
       console.error("Error in customrole command:", error);
-      await interaction.editReply({
-        content: "❌ An error occurred while managing your custom role.",
-      });
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({
+          content: "❌ An error occurred while managing your custom role.",
+          ephemeral: true,
+        });
+      }
     }
   },
 
