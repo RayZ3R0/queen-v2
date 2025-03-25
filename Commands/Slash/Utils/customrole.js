@@ -37,16 +37,16 @@ export default {
 
   run: async ({ client, interaction }) => {
     try {
-      // if (!interaction.member.premiumSince) {
-      //   return await interaction.reply({
-      //     embeds: [
-      //       createRoleErrorEmbed(
-      //         "You need to be a server booster to use this command."
-      //       ),
-      //     ],
-      //     ephemeral: true,
-      //   });
-      // }
+      if (!interaction.member.premiumSince) {
+        return await interaction.reply({
+          embeds: [
+            createRoleErrorEmbed(
+              "You need to be a server booster to use this command."
+            ),
+          ],
+          ephemeral: true,
+        });
+      }
 
       const subcommand = interaction.options.getSubcommand();
       const customRole = await CustomRoles.findOne({
