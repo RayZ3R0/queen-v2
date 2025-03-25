@@ -1,6 +1,6 @@
 import { EmbedBuilder } from "discord.js";
 
-const LEVEL_ROLES_DIVIDER = "--------------𝓛𝓮𝓿𝓮𝓵 𝓡𝓸𝓵𝓮𝓼--------------";
+const LEVEL_ROLES_DIVIDER = "Server Booster";
 
 /**
  * Set role position above level roles divider
