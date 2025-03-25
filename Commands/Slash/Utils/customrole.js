@@ -278,10 +278,20 @@ export default {
           return;
         }
 
-        // Create the role
+        // Find the level roles divider position
+        const dividerRole = await interaction.guild.roles.cache.find(
+          (r) => r.name === "--------------𝓛𝓮𝓿𝓮𝓵 𝓡𝓸𝓵𝓮𝓼--------------"
+        );
+
+        if (!dividerRole) {
+          throw new Error("Could not find level roles divider");
+        }
+
+        // Create the role above the level roles divider
         const newRole = await interaction.guild.roles.create({
           name: name,
           color: color,
+          position: dividerRole.position + 1, // Place it just above the divider
           reason: `Custom role created for ${interaction.user.tag}`,
         });
 

@@ -53,6 +53,20 @@ export default {
         await CustomRoles.findByIdAndDelete(existingRole._id);
       }
 
+      // Find the level roles divider position
+      const dividerRole = message.guild.roles.cache.find(
+        (r) => r.name === "--------------𝓛𝓮𝓿𝓮𝓵 𝓡𝓸𝓵𝓮𝓼--------------"
+      );
+
+      if (!dividerRole) {
+        return message.channel.send({
+          content: "❌ Could not find level roles divider.",
+        });
+      }
+
+      // Move the role above the divider
+      await role.setPosition(dividerRole.position + 1);
+
       // Save the role binding
       await new CustomRoles({
         userId: user.id,
