@@ -31,13 +31,21 @@ export default {
     )
     .addSubcommand((subcommand) =>
       subcommand.setName("delete").setDescription("Delete your custom role")
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("leaderboard")
+        .setDescription("View server boosters and their boost duration")
     ),
   category: "Utils",
   botPermissions: [PermissionFlagsBits.ManageRoles],
 
   run: async ({ client, interaction }) => {
     try {
-      if (!interaction.member.premiumSince) {
+      const subcommand = interaction.options.getSubcommand();
+
+      // Only check premium status for non-leaderboard commands
+      if (subcommand !== "leaderboard" && !interaction.member.premiumSince) {
         return await interaction.reply({
           embeds: [
             createRoleErrorEmbed(
@@ -48,7 +56,6 @@ export default {
         });
       }
 
-      const subcommand = interaction.options.getSubcommand();
       const customRole = await CustomRoles.findOne({
         userId: interaction.user.id,
         guildId: interaction.guild.id,
@@ -58,8 +65,11 @@ export default {
         case "create":
           if (customRole) {
             return await interaction.reply({
-              content:
-                "You already have a custom role. Use `/customrole edit` to modify it.",
+              embeds: [
+                createRoleErrorEmbed(
+                  "You already have a custom role. Use `/customrole edit` to modify it."
+                ),
+              ],
               ephemeral: true,
             });
           }
@@ -93,8 +103,11 @@ export default {
         case "edit":
           if (!customRole) {
             return await interaction.reply({
-              content:
-                "You don't have a custom role yet. Use `/customrole create` first.",
+              embeds: [
+                createRoleErrorEmbed(
+                  "You don't have a custom role yet. Use `/customrole create` first."
+                ),
+              ],
               ephemeral: true,
             });
           }
@@ -103,7 +116,11 @@ export default {
           if (!role) {
             await CustomRoles.findByIdAndDelete(customRole._id);
             return await interaction.reply({
-              content: "Your custom role was deleted. Please create a new one.",
+              embeds: [
+                createRoleErrorEmbed(
+                  "Your custom role was deleted. Please create a new one."
+                ),
+              ],
               ephemeral: true,
             });
           }
@@ -143,7 +160,9 @@ export default {
         case "delete":
           if (!customRole) {
             return await interaction.reply({
-              content: "You don't have a custom role to delete.",
+              embeds: [
+                createRoleErrorEmbed("You don't have a custom role to delete."),
+              ],
               ephemeral: true,
             });
           }
@@ -163,6 +182,175 @@ export default {
             content:
               "⚠️ Are you sure you want to delete your custom role? This cannot be undone.",
             components: [confirmButtons],
+          });
+          break;
+
+        case "leaderboard":
+          // Get all boosters
+          let boosters = (await interaction.guild.members.fetch())
+            .filter((m) => m.premiumSince)
+            .map((m) => ({
+              user: m.user,
+              boostingSince: m.premiumSince,
+              duration: Date.now() - m.premiumSince,
+              customRole: null,
+            }));
+
+          // Add custom role info
+          for (const booster of boosters) {
+            const customRoleData = await CustomRoles.findOne({
+              userId: booster.user.id,
+              guildId: interaction.guild.id,
+            });
+            if (customRoleData) {
+              const role = await interaction.guild.roles.fetch(
+                customRoleData.roleId
+              );
+              booster.customRole = role;
+            }
+          }
+
+          // Sort by boost duration
+          boosters.sort((a, b) => b.duration - a.duration);
+
+          // Setup pagination
+          const itemsPerPage = 10;
+          const maxPages = Math.ceil(boosters.length / itemsPerPage);
+          let currentPage = 0;
+
+          const generateEmbed = (page) => {
+            const embed = new EmbedBuilder()
+              .setColor("#FF73FA")
+              .setTitle("Server Booster Leaderboard")
+              .setDescription("Thanks y'all <:KurumiHehe:968779460943949875>")
+              .setFooter({
+                text: `Page ${page + 1}/${maxPages} • Total Boosters: ${
+                  boosters.length
+                }`,
+              });
+
+            const start = page * itemsPerPage;
+            const end = Math.min(start + itemsPerPage, boosters.length);
+
+            for (let i = start; i < end; i++) {
+              const booster = boosters[i];
+              embed.addFields({
+                name: `${i + 1}. ${booster.user.tag}`,
+                value: `Boosting since: <t:${Math.floor(
+                  booster.boostingSince.getTime() / 1000
+                )}:R>\n${
+                  booster.customRole
+                    ? `Custom Role: ${booster.customRole.name}`
+                    : "No custom role"
+                }`,
+              });
+            }
+
+            return embed;
+          };
+
+          // Create navigation buttons
+          const buttons = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+              .setCustomId("prev_page")
+              .setLabel("Previous")
+              .setStyle(ButtonStyle.Primary)
+              .setDisabled(true),
+            new ButtonBuilder()
+              .setCustomId("next_page")
+              .setLabel("Next")
+              .setStyle(ButtonStyle.Primary)
+              .setDisabled(maxPages <= 1),
+            new ButtonBuilder()
+              .setCustomId("refresh_lb")
+              .setLabel("🔄 Refresh")
+              .setStyle(ButtonStyle.Secondary)
+          );
+
+          const response = await interaction.reply({
+            embeds: [generateEmbed(0)],
+            components: [buttons],
+            fetchReply: true,
+          });
+
+          // Create button collector
+          const collector = response.createMessageComponentCollector({
+            componentType: ComponentType.Button,
+            time: 300000, // 5 minutes
+          });
+
+          collector.on("collect", async (i) => {
+            if (i.user.id !== interaction.user.id) {
+              await i.reply({
+                content: "These buttons aren't for you!",
+                ephemeral: true,
+              });
+              return;
+            }
+
+            // Handle button interactions
+            if (i.customId === "prev_page") {
+              currentPage--;
+            } else if (i.customId === "next_page") {
+              currentPage++;
+            } else if (i.customId === "refresh_lb") {
+              try {
+                // Refresh booster list
+                const newBoosters = (await interaction.guild.members.fetch())
+                  .filter((m) => m.premiumSince)
+                  .map((m) => ({
+                    user: m.user,
+                    boostingSince: m.premiumSince,
+                    duration: Date.now() - m.premiumSince,
+                    customRole: null,
+                  }));
+
+                // Update roles
+                for (const booster of newBoosters) {
+                  const customRoleData = await CustomRoles.findOne({
+                    userId: booster.user.id,
+                    guildId: interaction.guild.id,
+                  });
+                  if (customRoleData) {
+                    const role = await interaction.guild.roles.fetch(
+                      customRoleData.roleId
+                    );
+                    booster.customRole = role;
+                  }
+                }
+
+                boosters = newBoosters.sort((a, b) => b.duration - a.duration);
+                currentPage = 0; // Reset to first page
+
+                const newMaxPages = Math.ceil(boosters.length / itemsPerPage);
+                buttons.components[0].setDisabled(true);
+                buttons.components[1].setDisabled(newMaxPages <= 1);
+              } catch (error) {
+                console.error("Error refreshing booster list:", error);
+                await i.reply({
+                  embeds: [
+                    createRoleErrorEmbed("Failed to refresh booster list."),
+                  ],
+                  ephemeral: true,
+                });
+                return;
+              }
+            }
+
+            // Update button states
+            buttons.components[0].setDisabled(currentPage === 0);
+            buttons.components[1].setDisabled(currentPage === maxPages - 1);
+
+            await i.update({
+              embeds: [generateEmbed(currentPage)],
+              components: [buttons],
+            });
+          });
+
+          // Handle collector end
+          collector.on("end", () => {
+            buttons.components.forEach((button) => button.setDisabled(true));
+            interaction.editReply({ components: [buttons] }).catch(() => {});
           });
           break;
       }
@@ -188,7 +376,7 @@ export default {
 
         if (!customRole) {
           await interaction.update({
-            content: "❌ No custom role found to delete.",
+            embeds: [createRoleErrorEmbed("No custom role found to delete.")],
             components: [],
           });
           return;
@@ -201,7 +389,9 @@ export default {
 
         await CustomRoles.findByIdAndDelete(customRole._id);
         await interaction.update({
-          content: "✅ Your custom role has been deleted.",
+          embeds: [
+            createRoleSuccessEmbed("Your custom role has been deleted."),
+          ],
           components: [],
         });
       }
@@ -277,8 +467,11 @@ export default {
         // Validate color format
         if (!/^#[0-9A-F]{6}$/i.test(color)) {
           await interaction.reply({
-            content:
-              "❌ Invalid color format. Please use hex format (e.g., #FF0000).",
+            embeds: [
+              createRoleErrorEmbed(
+                "Invalid color format. Please use hex format (e.g., #FF0000)."
+              ),
+            ],
             ephemeral: true,
           });
           return;
@@ -316,7 +509,11 @@ export default {
         await interaction.member.roles.add(newRole);
 
         await interaction.reply({
-          content: `✅ Your custom role has been created and assigned to you!\nName: ${name}\nColor: ${color}`,
+          embeds: [
+            createRoleSuccessEmbed(
+              `Custom role has been created and assigned to you!\nName: ${name}\nColor: ${color}`
+            ),
+          ],
         });
         return;
       }
@@ -324,7 +521,9 @@ export default {
       if (interaction.customId === "edit_name_modal") {
         if (!customRole) {
           await interaction.reply({
-            content: "❌ You don't have a custom role to edit.",
+            embeds: [
+              createRoleErrorEmbed("You don't have a custom role to edit."),
+            ],
             ephemeral: true,
           });
           return;
@@ -335,8 +534,11 @@ export default {
 
         if (!role) {
           await interaction.reply({
-            content:
-              "❌ Your custom role could not be found. Please create a new one.",
+            embeds: [
+              createRoleErrorEmbed(
+                "Your custom role could not be found. Please create a new one."
+              ),
+            ],
             ephemeral: true,
           });
           return;
@@ -350,7 +552,11 @@ export default {
         await customRole.save();
 
         await interaction.reply({
-          content: `✅ Your custom role name has been updated to: ${newName}`,
+          embeds: [
+            createRoleSuccessEmbed(
+              `Your custom role name has been updated to: ${newName}`
+            ),
+          ],
         });
         return;
       }
@@ -367,8 +573,11 @@ export default {
         const newColor = interaction.fields.getTextInputValue("new_color");
         if (!/^#[0-9A-F]{6}$/i.test(newColor)) {
           await interaction.reply({
-            content:
-              "❌ Invalid color format. Please use hex format (e.g., #FF0000).",
+            embeds: [
+              createRoleErrorEmbed(
+                "Invalid color format. Please use hex format (e.g., #FF0000)."
+              ),
+            ],
             ephemeral: true,
           });
           return;
@@ -377,8 +586,11 @@ export default {
         const role = await interaction.guild.roles.fetch(customRole.roleId);
         if (!role) {
           await interaction.reply({
-            content:
-              "❌ Your custom role could not be found. Please create a new one.",
+            embeds: [
+              createRoleErrorEmbed(
+                "Your custom role could not be found. Please create a new one."
+              ),
+            ],
             ephemeral: true,
           });
           return;
@@ -392,14 +604,22 @@ export default {
         await customRole.save();
 
         await interaction.reply({
-          content: `✅ Your custom role color has been updated to: ${newColor}`,
+          embeds: [
+            createRoleSuccessEmbed(
+              `Your custom role color has been updated to: ${newColor}`
+            ),
+          ],
         });
         return;
       }
     } catch (error) {
       console.error("Error in modal handler:", error);
       await interaction.reply({
-        content: "❌ An error occurred while processing your request.",
+        embeds: [
+          createRoleErrorEmbed(
+            "An error occurred while processing your request."
+          ),
+        ],
         ephemeral: true,
       });
     }
