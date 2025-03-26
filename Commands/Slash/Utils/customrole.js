@@ -186,6 +186,9 @@ export default {
           break;
 
         case "leaderboard":
+          // Defer reply since we're doing heavy operations
+          await interaction.deferReply();
+
           // Get all boosters
           let boosters = (await interaction.guild.members.fetch())
             .filter((m) => m.premiumSince)
@@ -215,7 +218,7 @@ export default {
 
           // Setup pagination
           const itemsPerPage = 10;
-          const maxPages = Math.ceil(boosters.length / itemsPerPage);
+          let maxPages = Math.ceil(boosters.length / itemsPerPage);
           let currentPage = 0;
 
           const generateEmbed = (page) => {
@@ -267,90 +270,118 @@ export default {
               .setStyle(ButtonStyle.Secondary)
           );
 
-          const response = await interaction.reply({
+          const message = await interaction.editReply({
             embeds: [generateEmbed(0)],
             components: [buttons],
             fetchReply: true,
           });
 
-          // Create button collector
-          const collector = response.createMessageComponentCollector({
+          // Setup collector for button interactions
+          const collector = message.createMessageComponentCollector({
             componentType: ComponentType.Button,
             time: 300000, // 5 minutes
           });
 
           collector.on("collect", async (i) => {
-            if (i.user.id !== interaction.user.id) {
-              await i.reply({
-                content: "These buttons aren't for you!",
-                ephemeral: true,
-              });
-              return;
-            }
+            try {
+              await i.deferUpdate();
 
-            // Handle button interactions
-            if (i.customId === "prev_page") {
-              currentPage--;
-            } else if (i.customId === "next_page") {
-              currentPage++;
-            } else if (i.customId === "refresh_lb") {
-              try {
-                // Refresh booster list
-                const newBoosters = (await interaction.guild.members.fetch())
-                  .filter((m) => m.premiumSince)
-                  .map((m) => ({
-                    user: m.user,
-                    boostingSince: m.premiumSince,
-                    duration: Date.now() - m.premiumSince,
-                    customRole: null,
-                  }));
-
-                // Update roles
-                for (const booster of newBoosters) {
-                  const customRoleData = await CustomRoles.findOne({
-                    userId: booster.user.id,
-                    guildId: interaction.guild.id,
-                  });
-                  if (customRoleData) {
-                    const role = await interaction.guild.roles.fetch(
-                      customRoleData.roleId
-                    );
-                    booster.customRole = role;
-                  }
-                }
-
-                boosters = newBoosters.sort((a, b) => b.duration - a.duration);
-                currentPage = 0; // Reset to first page
-
-                const newMaxPages = Math.ceil(boosters.length / itemsPerPage);
-                buttons.components[0].setDisabled(true);
-                buttons.components[1].setDisabled(newMaxPages <= 1);
-              } catch (error) {
-                console.error("Error refreshing booster list:", error);
-                await i.reply({
-                  embeds: [
-                    createRoleErrorEmbed("Failed to refresh booster list."),
-                  ],
+              if (i.user.id !== interaction.user.id) {
+                await i.followUp({
+                  content: "These buttons aren't for you!",
                   ephemeral: true,
                 });
                 return;
               }
+
+              if (i.customId === "prev_page" && currentPage > 0) {
+                currentPage--;
+              } else if (
+                i.customId === "next_page" &&
+                currentPage < maxPages - 1
+              ) {
+                currentPage++;
+              } else if (i.customId === "refresh_lb") {
+                try {
+                  const newBoosters = (await interaction.guild.members.fetch())
+                    .filter((m) => m.premiumSince)
+                    .map((m) => ({
+                      user: m.user,
+                      boostingSince: m.premiumSince,
+                      duration: Date.now() - m.premiumSince,
+                      customRole: null,
+                    }));
+
+                  for (const booster of newBoosters) {
+                    const customRoleData = await CustomRoles.findOne({
+                      userId: booster.user.id,
+                      guildId: interaction.guild.id,
+                    });
+                    if (customRoleData) {
+                      const role = await interaction.guild.roles.fetch(
+                        customRoleData.roleId
+                      );
+                      booster.customRole = role;
+                    }
+                  }
+
+                  boosters = newBoosters.sort(
+                    (a, b) => b.duration - a.duration
+                  );
+                  currentPage = 0;
+
+                  // Recalculate maxPages
+                  const newMaxPages = Math.ceil(boosters.length / itemsPerPage);
+                  maxPages = newMaxPages;
+
+                  // Update buttons for new page count
+                  buttons.components[0].setDisabled(true);
+                  buttons.components[1].setDisabled(newMaxPages <= 1);
+                } catch (error) {
+                  console.error("Error refreshing booster list:", error);
+                  await i.followUp({
+                    embeds: [
+                      createRoleErrorEmbed("Failed to refresh booster list."),
+                    ],
+                    ephemeral: true,
+                  });
+                  return;
+                }
+              }
+
+              // Update button states
+              buttons.components[0].setDisabled(currentPage === 0);
+              buttons.components[1].setDisabled(currentPage === maxPages - 1);
+
+              // Update the message with new content
+              await i.editReply({
+                embeds: [generateEmbed(currentPage)],
+                components: [buttons],
+              });
+            } catch (error) {
+              console.error("Error in button interaction:", error);
+              if (!i.replied) {
+                await i.followUp({
+                  embeds: [
+                    createRoleErrorEmbed(
+                      "Failed to process button interaction."
+                    ),
+                  ],
+                  ephemeral: true,
+                });
+              }
             }
-
-            // Update button states
-            buttons.components[0].setDisabled(currentPage === 0);
-            buttons.components[1].setDisabled(currentPage === maxPages - 1);
-
-            await i.update({
-              embeds: [generateEmbed(currentPage)],
-              components: [buttons],
-            });
           });
 
           // Handle collector end
           collector.on("end", () => {
             buttons.components.forEach((button) => button.setDisabled(true));
-            interaction.editReply({ components: [buttons] }).catch(() => {});
+            interaction
+              .editReply({
+                embeds: [generateEmbed(currentPage)],
+                components: [buttons],
+              })
+              .catch(() => {});
           });
           break;
       }
