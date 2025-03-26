@@ -39,7 +39,7 @@ export default {
     ),
   category: "Utils",
   botPermissions: [PermissionFlagsBits.ManageRoles],
-
+  cooldown: 60,
   run: async ({ client, interaction }) => {
     try {
       const subcommand = interaction.options.getSubcommand();

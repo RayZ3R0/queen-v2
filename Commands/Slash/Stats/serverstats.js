@@ -33,6 +33,7 @@ const getCommandData = () => ({
   description: "View detailed server statistics",
   userPermissions: [PermissionFlagsBits.ViewChannel],
   botPermissions: [PermissionFlagsBits.ViewChannel],
+  cooldown: 120,
   data: new SlashCommandBuilder()
     .setName("serverstats")
     .setDescription("View detailed server statistics")

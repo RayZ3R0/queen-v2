@@ -128,34 +128,47 @@ client.on("interactionCreate", async (interaction) => {
         });
       }
 
-      // Check command cooldown
-      const cd = await getCooldown(interaction, command);
-      if (cd) {
-        const totalSeconds = Math.floor(cd);
-        const days = Math.floor(totalSeconds / 86400);
-        const hours = Math.floor((totalSeconds % 86400) / 3600);
-        const minutes = Math.floor((totalSeconds % 3600) / 60);
-        const seconds = totalSeconds % 60;
-        const timeParts = [];
-        if (days) timeParts.push(`${days} day${days !== 1 ? "s" : ""}`);
-        if (hours) timeParts.push(`${hours} hour${hours !== 1 ? "s" : ""}`);
-        if (minutes)
-          timeParts.push(`${minutes} minute${minutes !== 1 ? "s" : ""}`);
-        if (seconds)
-          timeParts.push(`${seconds} second${seconds !== 1 ? "s" : ""}`);
-        const timeString = timeParts.join(" ");
-        return interaction.reply({
-          content: `You are currently on cooldown. Please wait for **${timeString}** before trying again.`,
-          ephemeral: true,
-        });
+      // Check if user is an owner to skip cooldown
+      const isOwner = client.config.Owners.includes(interaction.user.id);
+
+      // Check command cooldown only for non-owners
+      if (!isOwner) {
+        const cd = await getCooldown(interaction, command);
+        if (cd) {
+          const totalSeconds = Math.floor(cd);
+          const days = Math.floor(totalSeconds / 86400);
+          const hours = Math.floor((totalSeconds % 86400) / 3600);
+          const minutes = Math.floor((totalSeconds % 3600) / 60);
+          const seconds = totalSeconds % 60;
+          const timeParts = [];
+          if (days) timeParts.push(`${days} day${days !== 1 ? "s" : ""}`);
+          if (hours) timeParts.push(`${hours} hour${hours !== 1 ? "s" : ""}`);
+          if (minutes)
+            timeParts.push(`${minutes} minute${minutes !== 1 ? "s" : ""}`);
+          if (seconds)
+            timeParts.push(`${seconds} second${seconds !== 1 ? "s" : ""}`);
+          const timeString = timeParts.join(" ");
+          return interaction.reply({
+            content: `You are currently on cooldown. Please wait for **${timeString}** before trying again.`,
+            ephemeral: true,
+          });
+        }
       }
 
       // Run the command with error handling
       await command.run({ client, interaction }).catch(handleCommandError);
 
-      // Set cooldown after successful execution
-      if (!command.noCooldownOnFail) {
-        await setCooldown(interaction, command).catch(console.error);
+      // Set cooldown after successful execution only for non-owners
+      if (!isOwner && !command.noCooldownOnFail) {
+        if (command.cooldown) {
+          // Apply the command's defined cooldown
+          await setCooldown(interaction, command).catch(console.error);
+        } else {
+          // Apply a default 5-second cooldown for commands without a defined cooldown
+          await setCooldown(interaction, { ...command, cooldown: 5 }).catch(
+            console.error
+          );
+        }
       }
     }
 

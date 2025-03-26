@@ -31,6 +31,7 @@ export default {
     ),
   category: "Utils",
   botPermissions: [PermissionFlagsBits.ManageRoles],
+  cooldown: 300,
 
   run: async ({ client, interaction }) => {
     try {
