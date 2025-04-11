@@ -1,95 +1,308 @@
+import { EmbedBuilder } from "discord.js";
 import { client } from "../bot.js";
+import { analyzeMessage, cleanupUserData } from "../utils/messageStore.js";
+import { analyzeTrust, isUserExempt } from "../utils/trustSystem.js";
+import AntiSpam from "../schema/antiSpam.js";
 
-const userMessageMap = new Map();
-const MESSAGE_LIMIT = 1;
-const TIMEOUT_DURATION = 300000; // 5 minutes in ms
-const TIME_DIFF_THRESHOLD = 5000; // 2 seconds
+// Channel IDs for logging - Update these with actual channel IDs
+const ADMIN_CHANNEL_ID = "938770418599337984";
+const LOG_CHANNEL_ID = "902045721983844382";
 
-const exemptChannelIds = [
-  "955399577895317524",
-  "957979414812065852",
-  "901338643128516648",
-  "957980980201816174",
-  "957981195604471858",
-];
+/**
+ * Create and send detailed log embed
+ * @param {Object} params Parameters for log creation
+ */
+async function sendLogEmbed({
+  guild,
+  user,
+  type,
+  content,
+  channelId,
+  spamAnalysis,
+  trustAnalysis,
+}) {
+  const logChannel = guild.channels.cache.get(LOG_CHANNEL_ID);
+  const adminChannel = guild.channels.cache.get(ADMIN_CHANNEL_ID);
+  if (!logChannel && !adminChannel) return;
 
-const ownerIds = ["636598760616624128"];
+  // Basic embed for regular logs
+  const logEmbed = new EmbedBuilder()
+    .setTitle("🚫 Anti-Spam Detection")
+    .setColor("Red")
+    .setAuthor({
+      name: user.tag,
+      iconURL: user.displayAvatarURL({ dynamic: true }),
+    })
+    .setDescription(`Spam detected from ${user.tag}`)
+    .addFields(
+      { name: "User ID", value: user.id, inline: true },
+      {
+        name: "Account Age",
+        value: `${trustAnalysis.accountAgeDays} days`,
+        inline: true,
+      },
+      {
+        name: "Trust Score",
+        value: `${trustAnalysis.trustScore}/100`,
+        inline: true,
+      },
+      { name: "Detection Type", value: type },
+      { name: "Channel", value: `<#${channelId}>` }
+    )
+    .setTimestamp();
 
+  // Send basic log to log channel
+  if (logChannel) {
+    await logChannel.send({ embeds: [logEmbed] });
+  }
+
+  // Create detailed embed for admin channel
+  const adminEmbed = new EmbedBuilder()
+    .setTitle("🚨 Detailed Spam Analysis")
+    .setColor("Red")
+    .setAuthor({
+      name: user.tag,
+      iconURL: user.displayAvatarURL({ dynamic: true }),
+    })
+    .setDescription("Detailed information about the spam detection")
+    .addFields(
+      {
+        name: "User Information",
+        value: `Tag: ${user.tag}\nID: ${user.id}\nAccount Age: ${trustAnalysis.accountAgeDays} days\nServer Age: ${trustAnalysis.serverAgeDays} days\nTrust Score: ${trustAnalysis.trustScore}/100`,
+      },
+      {
+        name: "Detection Details",
+        value: `Type: ${type}\nChannel: <#${channelId}>\nUnique Channels: ${spamAnalysis.uniqueChannels}\nDuplicate Messages: ${spamAnalysis.duplicateCount}`,
+      }
+    );
+
+  // Add specific details based on spam type
+  if (type === "LINK_SPAM" && content.includes("[")) {
+    adminEmbed.addFields({
+      name: "Suspicious Link Analysis",
+      value: "Detected markdown-style link hiding attempt",
+    });
+  }
+
+  if (spamAnalysis.deceptiveLink) {
+    adminEmbed.addFields({
+      name: "⚠️ Deceptive Link Warning",
+      value: "Attempted to hide malicious URL using whitelisted domain",
+    });
+  }
+
+  // Add message content with proper formatting
+  adminEmbed.addFields({
+    name: "Message Content",
+    value: content.length > 1024 ? content.substring(0, 1021) + "..." : content,
+  });
+
+  // Send detailed log to admin channel
+  if (adminChannel) {
+    await adminChannel.send({ embeds: [adminEmbed] });
+  }
+}
+
+/**
+ * Handle spam offense with progressive actions
+ * @param {Message} message Discord message object
+ * @param {Document} spamRecord MongoDB document
+ * @param {Object} trustAnalysis Trust analysis results
+ */
+async function handleSpamOffense(message, spamRecord, trustAnalysis) {
+  const { member, guild, author } = message;
+  const warnings = spamRecord.warnings;
+
+  let action = "";
+  let duration = 0;
+
+  // Apply stricter thresholds for new/untrusted users
+  const multiplier = trustAnalysis.thresholdMultiplier;
+
+  // Progressive action system
+  if (warnings <= 3 * multiplier) {
+    // First offense - Warning
+    action = "warned";
+    const warningEmbed = new EmbedBuilder()
+      .setColor("Yellow")
+      .setTitle("⚠️ Warning")
+      .setDescription(
+        "Please avoid sending similar messages across multiple channels."
+      )
+      .addFields({ name: "Warning Count", value: `${warnings}` });
+
+    await author.send({ embeds: [warningEmbed] }).catch(() => {});
+  } else if (warnings <= 5 * multiplier) {
+    // Second offense - Temporary mute
+    action = "muted";
+    duration = 5 * 60000; // 5 minutes
+    await member
+      .timeout(duration, "Anti-spam: Multiple warnings")
+      .catch(console.error);
+
+    const muteEmbed = new EmbedBuilder()
+      .setColor("Orange")
+      .setTitle("🔇 Muted")
+      .setDescription("You have been temporarily muted for spamming.")
+      .addFields(
+        { name: "Duration", value: "5 minutes" },
+        { name: "Warning Count", value: `${warnings}` }
+      );
+
+    await author.send({ embeds: [muteEmbed] }).catch(() => {});
+  } else {
+    // Third offense - Kick
+    action = "kicked";
+    await member.kick("Anti-spam: Excessive warnings").catch(console.error);
+
+    const kickEmbed = new EmbedBuilder()
+      .setColor("Red")
+      .setTitle("👢 Kicked")
+      .setDescription("You have been kicked for excessive spamming.")
+      .addFields({ name: "Warning Count", value: `${warnings}` });
+
+    await author.send({ embeds: [kickEmbed] }).catch(() => {});
+  }
+
+  // Log the action
+  const actionEmbed = new EmbedBuilder()
+    .setColor("Red")
+    .setTitle("Anti-Spam Action")
+    .setDescription(`${author.tag} has been ${action}`)
+    .addFields(
+      { name: "User ID", value: author.id },
+      { name: "Warning Count", value: `${warnings}` },
+      { name: "Trust Score", value: `${trustAnalysis.trustScore}` },
+      { name: "Action", value: action }
+    )
+    .setTimestamp();
+
+  const adminChannel = guild.channels.cache.get(ADMIN_CHANNEL_ID);
+  if (adminChannel) {
+    await adminChannel.send({ embeds: [actionEmbed] });
+  }
+}
+
+// Event handler
 client.on("messageCreate", async (message) => {
+  // Skip if message is from a bot or has no content
+  if (message.author.bot || !message.content) return;
+
   try {
-    // Ignore bots, exempt channels and owners.
-    if (message.author.bot) return;
-    if (ownerIds.includes(message.author.id)) return;
-    if (exemptChannelIds.includes(message.channel.id)) return;
+    const { member, guild, channel, content } = message;
 
-    // Ensure that message comes from a guild.
-    if (!message.guild || !message.member) return;
+    // Skip exempt users
+    if (await isUserExempt(member)) return;
 
-    const userId = message.author.id;
-    const currentTimestamp = message.createdTimestamp;
+    // Analyze user trust level
+    const trustAnalysis = await analyzeTrust(member);
 
-    if (userMessageMap.has(userId)) {
-      const userData = userMessageMap.get(userId);
-      const timeDifference =
-        currentTimestamp - userData.lastMessage.createdTimestamp;
-      let msgCount = userData.msgCount;
+    // Analyze message for spam
+    const spamAnalysis = analyzeMessage(message);
 
-      if (timeDifference > TIME_DIFF_THRESHOLD) {
-        clearTimeout(userData.timer);
-        // Reset message count and update lastMessage
-        userData.msgCount = 1;
-        userData.lastMessage = message;
-        userData.timer = setTimeout(() => {
-          userMessageMap.delete(userId);
-        }, TIMEOUT_DURATION);
-        userMessageMap.set(userId, userData);
-      } else {
-        // Increment message count within allowable time difference
-        msgCount++;
-        if (msgCount === MESSAGE_LIMIT) {
-          // Check if the bot can timeout the member
-          if (typeof message.member.timeout === "function") {
-            try {
-              await message.member.timeout(
-                TIMEOUT_DURATION,
-                "Spamming messages"
-              );
-            } catch (error) {
-              console.error(
-                `Error timing out member ${message.member.user.tag}:`,
-                error
-              );
+    // Check if any spam conditions are met
+    if (
+      spamAnalysis.isSpam.crossChannelSpam ||
+      spamAnalysis.isSpam.duplicateContent ||
+      spamAnalysis.isSpam.linkSpam
+    ) {
+      // Get or create spam record
+      const spamRecord = await AntiSpam.updateRecord(
+        message.author.id,
+        guild.id,
+        {
+          type: spamAnalysis.isSpam.crossChannelSpam
+            ? "CROSS_CHANNEL"
+            : spamAnalysis.isSpam.linkSpam
+            ? "LINK_SPAM"
+            : "DUPLICATE",
+          channelIds: [channel.id],
+          content: content,
+        }
+      );
+
+      // Delete the spam message
+      await message.delete().catch(console.error);
+
+      // Handle the offense
+      await handleSpamOffense(message, spamRecord, trustAnalysis);
+
+      // Log the spam detection
+      await sendLogEmbed({
+        guild,
+        user: message.author,
+        type: spamRecord.offenseHistory[spamRecord.offenseHistory.length - 1]
+          .type,
+        content: content,
+        channelId: channel.id,
+        spamAnalysis,
+        trustAnalysis,
+      });
+
+      // Send immediate notification for suspicious links
+      if (spamAnalysis.isSpam.linkSpam && spamAnalysis.deceptiveLink) {
+        const urgentEmbed = new EmbedBuilder()
+          .setColor("DarkRed")
+          .setTitle("⚠️ Suspicious Link Alert")
+          .setDescription("Potential malicious link detected")
+          .addFields(
+            { name: "User", value: message.author.tag },
+            { name: "Channel", value: `<#${channel.id}>` },
+            {
+              name: "Warning",
+              value: "Attempted to hide malicious URL using spoofed domain",
             }
-          } else {
-            console.warn(
-              `Timeout not available for member ${message.member.user.tag}.`
-            );
-          }
-          try {
-            await message.author.send({
-              content: `${message.author}, you have been muted for spamming. You will be unmuted after 5 minutes.`,
-            });
-          } catch (error) {
-            console.error(`Could not send DM to ${message.author.tag}:`, error);
-          }
-        } else {
-          userData.msgCount = msgCount;
-          userMessageMap.set(userId, userData);
+          )
+          .setTimestamp();
+
+        const adminChannel = guild.channels.cache.get(ADMIN_CHANNEL_ID);
+        if (adminChannel) {
+          await adminChannel.send({
+            content: "@here - Suspicious link detected!",
+            embeds: [urgentEmbed],
+          });
         }
       }
-    } else {
-      // New user: initialize in map with a removal timer.
-      const removalTimer = setTimeout(() => {
-        userMessageMap.delete(userId);
-      }, TIMEOUT_DURATION);
 
-      userMessageMap.set(userId, {
-        msgCount: 1,
-        lastMessage: message,
-        timer: removalTimer,
+      // Clean up tracking data
+      cleanupUserData(message.author.id, guild.id);
+    }
+  } catch (error) {
+    console.error("Anti-spam error:", error);
+
+    // Create detailed error log
+    const errorEmbed = new EmbedBuilder()
+      .setColor("DarkRed")
+      .setTitle("⚠️ Anti-Spam System Error")
+      .setDescription("An error occurred while processing anti-spam detection")
+      .addFields(
+        { name: "Error Message", value: error.message || "Unknown error" },
+        { name: "User", value: `${message.author.tag} (${message.author.id})` },
+        { name: "Channel", value: `<#${message.channel.id}>` },
+        {
+          name: "Message Content",
+          value: message.content.substring(0, 1024) || "No content",
+        }
+      )
+      .setTimestamp();
+
+    // Add stack trace if available
+    if (error.stack) {
+      errorEmbed.addFields({
+        name: "Stack Trace",
+        value: `\`\`\`${error.stack.substring(0, 1000)}...\`\`\``,
       });
     }
-  } catch (err) {
-    console.error("Error handling messageCreate event:", err);
+
+    // Send error log to admin channel
+    const adminChannel = message.guild.channels.cache.get(ADMIN_CHANNEL_ID);
+    if (adminChannel) {
+      await adminChannel
+        .send({
+          content: "@here - Anti-spam system encountered an error!",
+          embeds: [errorEmbed],
+        })
+        .catch(console.error);
+    }
   }
 });
