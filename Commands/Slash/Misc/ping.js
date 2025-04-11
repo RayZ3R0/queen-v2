@@ -1,15 +1,14 @@
-import { ApplicationCommandType, EmbedBuilder } from "discord.js";
+import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 
-/**
- * @type {import("../../../index").Scommand}
- */
 export default {
-  name: "ping",
-  description: "Check the bot's latency.",
+  name: "ping", // Adding name property to match message command
+  data: new SlashCommandBuilder()
+    .setName("ping")
+    .setDescription("Check the bot's latency"),
   memberPermissions: ["SendMessages"],
   botPermissions: ["SendMessages", "EmbedLinks"],
   category: "Misc",
-  type: ApplicationCommandType.ChatInput,
+  cooldown: 5, // Match message command cooldown
 
   run: async ({ client, interaction }) => {
     const startTime = Date.now();

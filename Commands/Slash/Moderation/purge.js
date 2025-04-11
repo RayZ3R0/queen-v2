@@ -1,52 +1,39 @@
-import {
-  ApplicationCommandType,
-  PermissionFlagsBits,
-  ApplicationCommandOptionType,
-} from "discord.js";
+import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 
-/**
- * @type {import("../../../index").Scommand}
- */
 export default {
   name: "purge",
-  description: "Delete multiple messages at once",
-  userPermissions: [PermissionFlagsBits.ManageMessages],
-  botPermissions: [PermissionFlagsBits.ManageMessages],
+  data: new SlashCommandBuilder()
+    .setName("purge")
+    .setDescription("Delete multiple messages at once")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .addIntegerOption((option) =>
+      option
+        .setName("amount")
+        .setDescription("Number of messages to delete (1-100)")
+        .setRequired(true)
+        .setMinValue(1)
+        .setMaxValue(100)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("filter")
+        .setDescription("Filter messages to delete")
+        .setRequired(false)
+        .addChoices(
+          { name: "bot", value: "bot" },
+          { name: "user", value: "user" }
+        )
+    )
+    .addUserOption((option) =>
+      option
+        .setName("target")
+        .setDescription(
+          "User whose messages to delete (required if filter is 'user')"
+        )
+        .setRequired(false)
+    ),
   category: "Moderation",
-  type: ApplicationCommandType.ChatInput,
-  options: [
-    {
-      name: "amount",
-      description: "Number of messages to delete (1-100)",
-      type: ApplicationCommandOptionType.Integer,
-      required: true,
-      minValue: 1,
-      maxValue: 100,
-    },
-    {
-      name: "filter",
-      description: "Filter messages to delete",
-      type: ApplicationCommandOptionType.String,
-      required: false,
-      choices: [
-        {
-          name: "bot",
-          value: "bot",
-        },
-        {
-          name: "user",
-          value: "user",
-        },
-      ],
-    },
-    {
-      name: "target",
-      description:
-        "User whose messages to delete (required if filter is 'user')",
-      type: ApplicationCommandOptionType.User,
-      required: false,
-    },
-  ],
+  botPermissions: [PermissionFlagsBits.ManageMessages],
 
   run: async ({ client, interaction }) => {
     await interaction.deferReply({ ephemeral: true });

@@ -1,35 +1,27 @@
-import {
-  ApplicationCommandType,
-  PermissionFlagsBits,
-  ApplicationCommandOptionType,
-} from "discord.js";
+import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 import warndb from "../../../schema/warndb.js";
 import { checkRoleHierarchy } from "../../../utils/permissionHandler.js";
 
-/**
- * @type {import("../../../index").Scommand}
- */
 export default {
   name: "warn",
-  description: "Warn a user for breaking rules",
-  userPermissions: [PermissionFlagsBits.KickMembers],
-  botPermissions: [PermissionFlagsBits.SendMessages],
+  data: new SlashCommandBuilder()
+    .setName("warn")
+    .setDescription("Warn a user for breaking rules")
+    .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
+    .addUserOption((option) =>
+      option
+        .setName("user")
+        .setDescription("The user to warn")
+        .setRequired(true)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("reason")
+        .setDescription("The reason for the warning")
+        .setRequired(true)
+    ),
   category: "Moderation",
-  type: ApplicationCommandType.ChatInput,
-  options: [
-    {
-      name: "user",
-      description: "The user to warn",
-      type: ApplicationCommandOptionType.User,
-      required: true,
-    },
-    {
-      name: "reason",
-      description: "The reason for the warning",
-      type: ApplicationCommandOptionType.String,
-      required: true,
-    },
-  ],
+  botPermissions: [PermissionFlagsBits.SendMessages],
 
   run: async ({ client, interaction }) => {
     await interaction.deferReply({ ephemeral: true });

@@ -1,5 +1,15 @@
 import { client } from "../bot.js";
 
+// Categories to exclude from channel count
+const excludedCategoryIds = [
+  "968036263678591036",
+  "938770271614173265",
+  "747717180589604879",
+  "901836260283404288",
+  "901841542392733717",
+  "987693139550683196",
+];
+
 /**
  * Updates the server stats channels for a guild.
  * @param {import("discord.js").Guild} guild
@@ -17,8 +27,10 @@ async function updateServerStats(guild) {
     // Calculate updated stats.
     const totalMembers = guild.members.cache.filter((m) => !m.user.bot).size;
     const totalBots = guild.members.cache.filter((m) => m.user.bot).size;
-    // Retain the "-20" subtraction from original code.
-    const totalChannels = guild.channels.cache.size - 20;
+    const totalChannels =
+      guild.channels.cache.filter(
+        (channel) => !excludedCategoryIds.includes(channel.parentId)
+      ).size - 3; // Exclude channels in specified categories // Subtract 3 from final count
 
     // Prepare new names.
     const newMemberName = `Members: ${totalMembers.toLocaleString()}`;

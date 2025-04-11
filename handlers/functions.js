@@ -6,12 +6,12 @@ import Cooldown from "../schema/cooldown.js";
  * @param {Object} cmd - The command object containing cooldown information.
  * @returns {number | false} Seconds left on cooldown or false if not on cooldown.
  */
-export async function getCooldown(message, cmd) {
-  if (!message || !cmd) return false;
+export async function getCooldown(context, cmd) {
+  if (!context || !cmd) return false;
 
   const now = Date.now();
   const cooldownAmount = cmd.cooldown * 1000; // cooldown in milliseconds
-  const userID = message.member.id;
+  const userID = context.member?.id || context.user?.id;
 
   const record = await Cooldown.findOne({ userID, commandName: cmd.name });
   if (record) {
@@ -32,10 +32,10 @@ export async function getCooldown(message, cmd) {
  * @param {Object} message - The message object from Discord.
  * @param {Object} cmd - The command object containing cooldown information.
  */
-export async function setCooldown(message, cmd) {
-  if (!message || !cmd) return;
+export async function setCooldown(context, cmd) {
+  if (!context || !cmd) return;
   const now = Date.now();
-  const userID = message.member.id;
+  const userID = context.member?.id || context.user?.id;
 
   let record = await Cooldown.findOne({ userID, commandName: cmd.name });
   if (record) {

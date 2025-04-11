@@ -1,6 +1,7 @@
 import { Bot } from "./Client.js";
 import { readdir } from "node:fs/promises";
 import { Routes } from "discord.js";
+import { Logger } from "../utils/Logger.js";
 
 /**
  * Loads slash commands for the client and registers them globally or in a specific guild.
@@ -12,14 +13,17 @@ export default async function loadSlashCommands(client) {
   } = client.config;
 
   try {
-    console.log("> Loading slash commands...");
+    const spinnerId = Logger.startSpinner("Loading slash commands");
     let allCommands = [];
+    let loadedCommands = [];
+    let totalCommands = 0;
     const commandsDir = await readdir(`./Commands/Slash`);
 
     // Load all commands
     for (const dir of commandsDir) {
       const commands = await readdir(`./Commands/Slash/${dir}`);
       const jsCommands = commands.filter((f) => f.endsWith(".js"));
+      totalCommands += jsCommands.length;
 
       for (const cmd of jsCommands) {
         try {
@@ -28,9 +32,9 @@ export default async function loadSlashCommands(client) {
           );
 
           // Validate command structure
-          if (!command?.name) {
+          if (!command?.data || !command?.run) {
             console.warn(
-              `⚠️ Command in ${cmd} is missing required 'name' property`
+              `[!] Command in ${cmd} is missing required 'data' or 'run' property`
             );
             continue;
           }
@@ -39,82 +43,47 @@ export default async function loadSlashCommands(client) {
           command.botPermissions = command.botPermissions || [];
           command.memberPermissions = command.memberPermissions || [];
 
-          // Validate required command properties
-          const requiredProps = ["description", "type", "run"];
-          const missingProps = requiredProps.filter((prop) => !command[prop]);
+          client.scommands.set(command.data.name, command);
+          allCommands.push(command.data.toJSON());
+          loadedCommands.push({
+            category: dir,
+            name: command.data.name,
+          });
 
-          if (missingProps.length > 0) {
-            console.warn(
-              `⚠️ Command ${
-                command.name
-              } is missing required properties: ${missingProps.join(", ")}`
-            );
-            continue;
-          }
-
-          client.scommands.set(command.name, command);
-          allCommands.push(command);
-          console.log(`> ✓ Loaded slash command: ${command.name}`);
+          Logger.updateSpinner(
+            spinnerId,
+            `Loading slash commands... (${client.scommands.size}/${totalCommands})`
+          );
         } catch (error) {
-          console.error(`❌ Error loading command from file ${cmd}:`, error);
+          console.error(`[x] Error loading command from file ${cmd}:`, error);
         }
       }
     }
 
-    // Wait for client to be ready before registering commands
-    if (!client.isReady()) {
-      console.log("> Waiting for client to be ready...");
-      await new Promise((resolve) => client.once("ready", resolve));
-    }
+    Logger.succeedSpinner(spinnerId);
 
-    try {
-      console.log(`> Registering ${allCommands.length} slash commands...`);
+    // Group commands by category
+    const groupedCommands = loadedCommands.reduce((acc, cmd) => {
+      if (!acc[cmd.category]) acc[cmd.category] = [];
+      acc[cmd.category].push(cmd.name);
+      return acc;
+    }, {});
 
-      // Clear existing commands first
-      if (Global) {
-        const existingGlobalCommands =
-          await client.application.commands.fetch();
-        console.log(
-          `> Found ${existingGlobalCommands.size} existing global commands`
-        );
+    // Create box content
+    const boxContent = ["[*] Command Statistics"];
+    boxContent.push(`[*] Total Commands: ${client.scommands.size}`);
+    boxContent.push("\nCommands by Category:");
 
-        await client.application.commands.set([]);
-        console.log("> Cleared existing global commands");
+    Object.entries(groupedCommands).forEach(([category, commands]) => {
+      boxContent.push(`\n${category}:`);
+      commands.forEach((cmd) => boxContent.push(`  + ${cmd}`));
+    });
 
-        await client.application.commands.set(allCommands);
-        console.log("> ✅ Slash commands registered globally");
-      } else {
-        const guild = await client.guilds.fetch(GuildID);
-        if (!guild) {
-          throw new Error(`Could not find guild with ID: ${GuildID}`);
-        }
-
-        const existingGuildCommands = await guild.commands.fetch();
-        console.log(
-          `> Found ${existingGuildCommands.size} existing guild commands`
-        );
-
-        await guild.commands.set([]);
-        console.log("> Cleared existing guild commands");
-
-        await guild.commands.set(allCommands);
-        console.log(`> ✅ Slash commands registered in guild: ${guild.name}`);
-      }
-    } catch (error) {
-      console.error("❌ Error registering slash commands:", error);
-      // Try to provide more specific error information
-      if (error.code === 50001) {
-        console.error(
-          "Bot lacks 'applications.commands' scope or required permissions"
-        );
-      }
-      throw error; // Re-throw to be caught by outer try-catch
-    }
-
+    console.log(Logger.createBox("Slash Commands Loaded", boxContent));
     console.log(
-      `> ✅ Successfully loaded and registered ${client.scommands.size} slash commands`
+      "[>] Note: Use 'node deploy-commands.js' to register commands with Discord"
     );
   } catch (error) {
-    console.error("❌ An error occurred while loading slash commands:", error);
+    console.error("[x] An error occurred while loading slash commands:", error);
   }
 }

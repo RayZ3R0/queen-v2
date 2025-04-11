@@ -1,35 +1,27 @@
-import {
-  ApplicationCommandType,
-  PermissionFlagsBits,
-  ApplicationCommandOptionType,
-} from "discord.js";
+import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 import warndb from "../../../schema/warndb.js";
 import { checkRoleHierarchy } from "../../../utils/permissionHandler.js";
 
-/**
- * @type {import("../../../index").Scommand}
- */
 export default {
   name: "delwarn",
-  description: "Delete a specific warning from a user",
-  userPermissions: [PermissionFlagsBits.KickMembers],
-  botPermissions: [PermissionFlagsBits.SendMessages],
+  data: new SlashCommandBuilder()
+    .setName("delwarn")
+    .setDescription("Delete a specific warning from a user")
+    .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
+    .addUserOption((option) =>
+      option
+        .setName("user")
+        .setDescription("The user whose warning to delete")
+        .setRequired(true)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("warnid")
+        .setDescription("The ID of the warning to delete")
+        .setRequired(true)
+    ),
   category: "Moderation",
-  type: ApplicationCommandType.ChatInput,
-  options: [
-    {
-      name: "user",
-      description: "The user whose warning to delete",
-      type: ApplicationCommandOptionType.User,
-      required: true,
-    },
-    {
-      name: "warnid",
-      description: "The ID of the warning to delete",
-      type: ApplicationCommandOptionType.String,
-      required: true,
-    },
-  ],
+  botPermissions: [PermissionFlagsBits.SendMessages],
 
   run: async ({ client, interaction }) => {
     await interaction.deferReply();

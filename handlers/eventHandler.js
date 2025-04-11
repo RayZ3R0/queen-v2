@@ -1,4 +1,5 @@
 import { readdir } from "node:fs/promises";
+import { Logger } from "../utils/Logger.js";
 
 /**
  * Loads event handlers for the client.
@@ -6,7 +7,9 @@ import { readdir } from "node:fs/promises";
  */
 export default async (client) => {
   try {
+    const spinnerId = Logger.startSpinner("Loading events");
     let count = 0;
+    let loadedEvents = [];
 
     const eventFiles = await readdir("./events");
     const eventFilesFiltered = eventFiles.filter((file) =>
@@ -18,15 +21,31 @@ export default async (client) => {
         try {
           await import(`../events/${file}`).then((r) => r.default);
           count++;
+          loadedEvents.push(file.replace(".js", ""));
+          Logger.updateSpinner(
+            spinnerId,
+            `Loading events... (${count}/${eventFilesFiltered.length})`
+          );
         } catch (error) {
-          console.error(`Error loading event from file ${file}:`, error);
+          console.error(`[x] Error loading event from file ${file}:`, error);
           return 0;
         }
       })
     );
 
-    console.log(`> ✅ Successfully loaded ${count} events.`);
+    Logger.succeedSpinner(spinnerId);
+    console.log(
+      Logger.createBox("Events Loaded", [
+        `[*] Total Events: ${count}`,
+        "",
+        "Loaded Events:",
+        ...loadedEvents.map((event) => `  + ${event}`),
+      ])
+    );
   } catch (error) {
-    console.error("An error occurred while reading the events folder:", error);
+    console.error(
+      "[x] An error occurred while reading the events folder:",
+      error
+    );
   }
 };

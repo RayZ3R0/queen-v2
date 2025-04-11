@@ -1,6 +1,5 @@
 import {
-  ApplicationCommandType,
-  ApplicationCommandOptionType,
+  SlashCommandBuilder,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
@@ -10,9 +9,9 @@ import {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  MessageFlags,
 } from "discord.js";
 import { basename } from "path";
-import profileSchema from "../../../schema/profile.js";
 import {
   NATURAL_BLACKJACK_MULTIPLIER,
   generateDeck,
@@ -32,71 +31,108 @@ import {
   getThinkingDelay,
   getDealerCheatProbability,
 } from "../../../utils/dealerPersonality.js";
+import BalanceManager from "../../../utils/balanceManager.js";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Safety wrapper for balance updates
-const safeUpdateBalance = async (userId, newBalance) => {
-  const safeBalance = Math.max(0, Math.floor(newBalance));
-  await profileSchema.findOneAndUpdate(
-    { userid: userId },
-    { balance: safeBalance }
-  );
-  return safeBalance;
-};
+// Handle insurance bet with safety checks
+const handleInsuranceBet = async (
+  modalResponse,
+  maxInsurance,
+  currentBalance,
+  userId
+) => {
+  try {
+    let amount = parseInt(
+      modalResponse.fields.getTextInputValue("insurance_amount")
+    );
+    amount = Math.min(maxInsurance, Math.max(0, amount));
 
-/**
- * @type {import("../../../index").Scommand}
- */
-export default {
-  name: "deviouscards",
-  description:
-    "Play blackjack against a cunning dealer who might bend the rules",
-  category: "Spirits",
-  type: ApplicationCommandType.ChatInput,
-  options: [
-    {
-      name: "bet",
-      description: "Amount of Spirit Coins to bet",
-      type: ApplicationCommandOptionType.Integer,
-      required: true,
-      minValue: 1,
-    },
-    {
-      name: "difficulty",
-      description: "Choose the dealer's personality and behavior",
-      type: ApplicationCommandOptionType.String,
-      required: false,
-      choices: [
-        {
-          name: "Easy - Friendly dealer with better odds",
-          value: "easy",
-        },
-        {
-          name: "Normal - Classic devious dealer experience",
-          value: "normal",
-        },
-        {
-          name: "Hard - Ruthless dealer who frequently cheats",
-          value: "hard",
-        },
-      ],
-    },
-  ],
-
-  run: async ({ client, interaction }) => {
-    if (!client.gamblingEnabled) {
-      return interaction.reply({
-        content: "Gambling is currently disabled.",
-        ephemeral: true,
+    // Validate player can afford insurance
+    const canAfford = await BalanceManager.canAffordBet(userId, amount, false);
+    if (!canAfford) {
+      await modalResponse.reply({
+        content: "Insufficient balance for insurance bet.",
+        flags: MessageFlags.Ephemeral,
       });
+      return { insurancePlaced: false, updatedBalance: currentBalance };
     }
 
-    if (client.gamblingUsers.has(interaction.user.id)) {
+    if (amount > 0) {
+      const newBalance = await BalanceManager.updateBalance(
+        userId,
+        -amount,
+        currentBalance
+      );
+
+      await modalResponse.reply({
+        content: `Insurance bet placed: ${amount} Spirit Coins`,
+        flags: MessageFlags.Ephemeral,
+      });
+
+      return {
+        insurancePlaced: true,
+        insuranceAmount: amount,
+        updatedBalance: newBalance,
+      };
+    }
+
+    await modalResponse.reply({
+      content: "Invalid insurance amount.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return { insurancePlaced: false, updatedBalance: currentBalance };
+  } catch (error) {
+    console.error("Insurance bet error:", error);
+    await modalResponse.reply({
+      content: "Error processing insurance bet.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return { insurancePlaced: false, updatedBalance: currentBalance };
+  }
+};
+
+export default {
+  name: "cards",
+  data: new SlashCommandBuilder()
+    .setName("cards")
+    .setDescription(
+      "Play blackjack against a cunning dealer who might bend the rules"
+    )
+    .addIntegerOption((option) =>
+      option
+        .setName("bet")
+        .setDescription("Amount of Spirit Coins to bet")
+        .setRequired(true)
+        .setMinValue(1)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("difficulty")
+        .setDescription("Choose the dealer's personality and behavior")
+        .addChoices(
+          { name: "Easy - Friendly dealer with better odds", value: "easy" },
+          {
+            name: "Normal - Classic devious dealer experience",
+            value: "normal",
+          },
+          {
+            name: "Hard - Ruthless dealer who frequently cheats",
+            value: "hard",
+          }
+        )
+    ),
+  category: "Spirits",
+  gambling: true,
+  autoEndGamblingSession: false,
+
+  run: async ({ client, interaction }) => {
+    // Start gambling session with autoEnd
+    if (!client.startGamblingSession(interaction.user.id, interaction, true)) {
       return interaction.reply({
         content:
           "You are already in a gambling session. Please finish it first.",
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -107,7 +143,37 @@ export default {
       const difficulty =
         interaction.options.getString("difficulty") || "normal";
 
-      // Show tutorial option first
+      // Get bet amount and validate
+      const bet = interaction.options.getInteger("bet");
+
+      // Validate user can afford the bet
+      const canAfford = await BalanceManager.canAffordBet(
+        interaction.user.id,
+        bet
+      );
+
+      if (!canAfford) {
+        client.endGamblingSession(interaction.user.id);
+        const balance = await BalanceManager.getBalance(interaction.user.id);
+        return interaction.editReply({
+          content:
+            `You need at least ${
+              bet * 2.5
+            } Spirit Coins to play (for double down and insurance).\n` +
+            `Your balance is ${BalanceManager.format(balance)} Spirit Coins.`,
+        });
+      }
+
+      let currentBalance = await BalanceManager.getBalance(interaction.user.id);
+      if (currentBalance === null) {
+        client.endGamblingSession(interaction.user.id);
+        return interaction.editReply({
+          content:
+            "You don't have a profile yet. Please use the `/start` command first.",
+        });
+      }
+
+      // Show tutorial option after validations
       const tutorialEmbed = new EmbedBuilder()
         .setColor("#663399")
         .setTitle("🎭 Welcome to Devious Dealer")
@@ -133,56 +199,43 @@ export default {
           .setStyle(ButtonStyle.Success)
       );
 
-      const tutorialMsg = await interaction.editReply({
-        embeds: [tutorialEmbed],
-        components: [tutorialRow],
-      });
-
-      const tutorialResponse = await tutorialMsg.awaitMessageComponent({
-        filter: (i) => i.user.id === interaction.user.id,
-        time: 30000,
-      });
-
-      if (tutorialResponse.customId === "view_tutorial") {
-        await tutorialResponse.update({
-          content:
-            "Opening tutorial... You can start a game after with `/deviouscards`",
-          embeds: [],
-          components: [],
+      try {
+        const tutorialMsg = await interaction.editReply({
+          embeds: [tutorialEmbed],
+          components: [tutorialRow],
         });
-        const tutorialCommand = client.slashCommands.get("cardstutorial");
-        if (tutorialCommand) {
-          await tutorialCommand.run({ client, interaction });
+
+        const tutorialResponse = await tutorialMsg.awaitMessageComponent({
+          filter: (i) => i.user.id === interaction.user.id,
+          time: 30000,
+        });
+
+        if (tutorialResponse.customId === "view_tutorial") {
+          // End gambling session if they choose tutorial
+          client.endGamblingSession(interaction.user.id);
+          await tutorialResponse.update({
+            content: "Opening tutorial...",
+            embeds: [],
+            components: [],
+          });
+          const tutorialCommand = client.scommands.get("cardstutorial");
+          if (tutorialCommand) {
+            return tutorialCommand.run({
+              client,
+              interaction,
+              isDeferred: true,
+            });
+          }
+          return;
         }
-        return;
-      }
 
-      await tutorialResponse.deferUpdate();
-
-      // Start the game
-      client.gamblingUsers.add(interaction.user.id);
-      const bet = interaction.options.getInteger("bet");
-      const userProfile = await profileSchema.findOne({
-        userid: interaction.user.id,
-      });
-
-      // Validate profile and balance
-      if (!userProfile) {
-        client.gamblingUsers.delete(interaction.user.id);
+        await tutorialResponse.deferUpdate();
+      } catch (error) {
+        client.endGamblingSession(interaction.user.id);
+        console.error("Tutorial error:", error);
         return interaction.editReply({
-          content:
-            "You don't have a profile yet. Please use the `/start` command first.",
-        });
-      }
-
-      // Track potential maximum loss for validation
-      const maxPotentialLoss = bet * 2; // Double down scenario
-      if (userProfile.balance < maxPotentialLoss) {
-        client.gamblingUsers.delete(interaction.user.id);
-        return interaction.editReply({
-          content:
-            `You need at least ${maxPotentialLoss} Spirit Coins to play (in case of double down).\n` +
-            `Your balance is ${userProfile.balance} Spirit Coins.`,
+          content: "The tutorial timed out. Please try again.",
+          components: [],
         });
       }
 
@@ -198,7 +251,6 @@ export default {
 
       // Initialize game with smart dealer mood
       let dealerMood = getDealerMood(gameState, difficulty);
-      let currentBalance = userProfile.balance;
       let deck = shuffleDeck(generateDeck());
       let playerHand = [deck.pop(), deck.pop()];
       let dealerHand = [deck.pop(), deck.pop()];
@@ -228,7 +280,9 @@ export default {
                   : "")
             )
             .setFooter({
-              text: `Bet: ${bet} Spirit Coins | Balance: ${currentBalance} Spirit Coins`,
+              text: `Bet: ${bet} Spirit Coins | Balance: ${BalanceManager.format(
+                currentBalance
+              )} Spirit Coins`,
             })
             .setImage(`attachment://${dealerFileName}`),
           dealerFileName,
@@ -254,7 +308,9 @@ export default {
             .setLabel("Double Down")
             .setStyle(ButtonStyle.Danger)
             .setDisabled(
-              disable || playerHand.length > 2 || currentBalance < bet
+              disable ||
+                playerHand.length > 2 ||
+                !BalanceManager.canAffordBet(interaction.user.id, bet, false)
             ),
           new ButtonBuilder()
             .setCustomId("surrender")
@@ -298,14 +354,19 @@ export default {
 
       // Handle Natural Blackjack
       if (isNaturalBlackjack(playerHand)) {
-        const winMultiplier = DIFFICULTY_SETTINGS[difficulty].payoutMultiplier;
-        const winAmount = Math.ceil(
-          bet * NATURAL_BLACKJACK_MULTIPLIER * winMultiplier
+        const winAmount = calculatePayout(
+          bet,
+          NATURAL_BLACKJACK_MULTIPLIER,
+          difficulty
         );
-        currentBalance = await safeUpdateBalance(
-          interaction.user.id,
-          currentBalance + winAmount
-        );
+        if (winAmount > 0) {
+          currentBalance = await BalanceManager.updateBalance(
+            interaction.user.id,
+            winAmount,
+            currentBalance
+          );
+        }
+
         gameState.playerWinStreak++;
         gameState.playerTotalWinnings += winAmount;
 
@@ -325,7 +386,9 @@ export default {
                 .map((card) => `\`${card.code}\``)
                 .join(" ")}\n` +
               `**Winnings:** ${winAmount} Spirit Coins\n` +
-              `**New Balance:** ${currentBalance} Spirit Coins`
+              `**New Balance:** ${BalanceManager.format(
+                currentBalance
+              )} Spirit Coins`
           );
 
         await gameMessage.edit({
@@ -333,7 +396,7 @@ export default {
           components: [buildActionRow(true)],
         });
 
-        client.gamblingUsers.delete(interaction.user.id);
+        client.endGamblingSession(interaction.user.id);
         return;
       }
 
@@ -372,8 +435,7 @@ export default {
           });
 
           if (insuranceResponse.customId === "insurance") {
-            await insuranceResponse.deferUpdate();
-
+            // Create modal before deferring
             const modal = new ModalBuilder()
               .setCustomId("insurance_modal")
               .setTitle("Insurance Bet")
@@ -390,35 +452,37 @@ export default {
 
             await insuranceResponse.showModal(modal);
 
-            const modalResponse = await insuranceResponse
-              .awaitModalSubmit({
-                time: 30000,
-                filter: (i) => i.user.id === interaction.user.id,
-              })
-              .catch(() => null);
+            try {
+              const modalResponse = await insuranceResponse
+                .awaitModalSubmit({
+                  time: 30000,
+                  filter: (i) => i.user.id === interaction.user.id,
+                })
+                .catch(() => null);
 
-            if (modalResponse) {
-              let amount = parseInt(
-                modalResponse.fields.getTextInputValue("insurance_amount")
-              );
-              amount = Math.min(maxInsurance, Math.max(0, amount));
+              if (modalResponse) {
+                const { insurancePlaced, insuranceAmount, updatedBalance } =
+                  await handleInsuranceBet(
+                    modalResponse,
+                    maxInsurance,
+                    currentBalance,
+                    interaction.user.id
+                  );
 
-              if (amount > 0 && amount <= currentBalance) {
-                insuranceBet = amount;
-                currentBalance = await safeUpdateBalance(
-                  interaction.user.id,
-                  currentBalance - amount
-                );
-
-                await modalResponse.reply({
-                  content: `Insurance bet placed: ${amount} Spirit Coins`,
-                  ephemeral: true,
-                });
+                if (insurancePlaced) {
+                  insuranceBet = insuranceAmount;
+                  currentBalance = updatedBalance;
+                }
               }
+            } catch (modalError) {
+              console.error("Modal error:", modalError);
             }
+
+            // Try to defer after modal handling
+            await insuranceResponse.deferUpdate().catch(() => {});
           }
         } catch (error) {
-          console.error("Insurance error:", error);
+          console.error("Insurance interaction error:", error);
         }
 
         // Update game display after insurance
@@ -454,13 +518,28 @@ export default {
                 await i.followUp({
                   content:
                     "You're making moves too quickly! Please wait a moment.",
-                  ephemeral: true,
+                  flags: MessageFlags.Ephemeral,
                 });
                 return;
               }
 
               await sleep(getThinkingDelay("HIT_DECISION", difficulty));
               playerHand.push(deck.pop());
+              const update = renderGameState();
+              const newCard = new AttachmentBuilder(update.dealerImagePath, {
+                name: update.dealerFileName,
+              });
+
+              await gameMessage.edit({
+                embeds: [update.embed],
+                files: [newCard],
+                components: [buildActionRow()],
+              });
+
+              if (calculateHandTotal(playerHand) > 21) {
+                gameOver = true;
+                collector.stop("bust");
+              }
               break;
 
             case "stand":
@@ -469,11 +548,19 @@ export default {
               return;
 
             case "double":
-              if (playerHand.length === 2 && currentBalance >= bet) {
-                playerDoubled = true;
-                currentBalance = await safeUpdateBalance(
+              if (
+                playerHand.length === 2 &&
+                (await BalanceManager.canAffordBet(
                   interaction.user.id,
-                  currentBalance - bet
+                  bet,
+                  false
+                ))
+              ) {
+                playerDoubled = true;
+                currentBalance = await BalanceManager.updateBalance(
+                  interaction.user.id,
+                  -bet,
+                  currentBalance
                 );
                 playerHand.push(deck.pop());
                 gameOver = true;
@@ -488,22 +575,6 @@ export default {
 
             default:
               return;
-          }
-
-          const update = renderGameState();
-          const newCard = new AttachmentBuilder(update.dealerImagePath, {
-            name: update.dealerFileName,
-          });
-
-          await i.editReply({
-            embeds: [update.embed],
-            files: [newCard],
-            components: [buildActionRow()],
-          });
-
-          if (calculateHandTotal(playerHand) > 21) {
-            gameOver = true;
-            collector.stop("bust");
           }
         } catch (error) {
           console.error("Game action error:", error);
@@ -527,7 +598,7 @@ export default {
               components: [buildActionRow(true)],
             });
 
-            client.gamblingUsers.delete(interaction.user.id);
+            client.endGamblingSession(interaction.user.id);
             return;
           }
 
@@ -535,9 +606,10 @@ export default {
 
           if (reason === "surrender") {
             const loss = Math.floor(bet / 2);
-            currentBalance = await safeUpdateBalance(
+            currentBalance = await BalanceManager.updateBalance(
               interaction.user.id,
-              currentBalance - loss
+              -loss,
+              currentBalance
             );
 
             gameState.dealerWinStreak++;
@@ -549,18 +621,22 @@ export default {
               .setDescription(
                 getDealerResponse("SURRENDER", dealerMood, difficulty) +
                   `\n\nYou surrender and lose **${loss} Spirit Coins**.\n` +
-                  `**New Balance:** ${currentBalance} Spirit Coins`
+                  `**New Balance:** ${BalanceManager.format(
+                    currentBalance
+                  )} Spirit Coins`
               );
 
             await gameMessage.edit({
               embeds: [surrenderEmbed],
               components: [buildActionRow(true)],
             });
-            client.gamblingUsers.delete(interaction.user.id);
+            client.endGamblingSession(interaction.user.id);
           } else if (reason === "bust") {
-            currentBalance = await safeUpdateBalance(
+            const lossAmount = bet * (playerDoubled ? 2 : 1);
+            currentBalance = await BalanceManager.updateBalance(
               interaction.user.id,
-              currentBalance - bet * (playerDoubled ? 2 : 1)
+              -lossAmount,
+              currentBalance
             );
 
             gameState.dealerWinStreak++;
@@ -572,10 +648,10 @@ export default {
               .setDescription(
                 getDealerResponse("PLAYER_BUST", dealerMood, difficulty) +
                   `\n\nYour hand totals **${playerTotal}** - you've busted!\n` +
-                  `You lose **${
-                    bet * (playerDoubled ? 2 : 1)
-                  } Spirit Coins**.\n` +
-                  `**New Balance:** ${currentBalance} Spirit Coins`
+                  `You lose **${lossAmount} Spirit Coins**.\n` +
+                  `**New Balance:** ${BalanceManager.format(
+                    currentBalance
+                  )} Spirit Coins`
               );
 
             await gameMessage.edit({
@@ -583,7 +659,7 @@ export default {
               components: [buildActionRow(true)],
             });
 
-            client.gamblingUsers.delete(interaction.user.id);
+            client.endGamblingSession(interaction.user.id);
           } else if (reason === "stand" || reason === "double") {
             await sleep(getThinkingDelay("FINAL_REVEAL", difficulty));
 
@@ -607,21 +683,24 @@ export default {
               insuranceBet > 0
             ) {
               winAmount = insuranceBet * 2;
-              currentBalance = await safeUpdateBalance(
+              currentBalance = await BalanceManager.updateBalance(
                 interaction.user.id,
-                currentBalance + winAmount
+                winAmount,
+                currentBalance
               );
             }
 
             if (dealerTotal > 21) {
-              winAmount += playerDoubled ? bet * 2 : bet;
-              winAmount = Math.floor(
-                winAmount * DIFFICULTY_SETTINGS[difficulty].payoutMultiplier
-              );
-              currentBalance = await safeUpdateBalance(
-                interaction.user.id,
-                currentBalance + winAmount
-              );
+              // Calculate win amount with validation
+              const baseWin = playerDoubled ? bet * 4 : bet;
+              winAmount = calculatePayout(baseWin, 1, difficulty);
+              if (winAmount > 0) {
+                currentBalance = await BalanceManager.updateBalance(
+                  interaction.user.id,
+                  winAmount,
+                  currentBalance
+                );
+              }
 
               gameState.playerWinStreak++;
               dealerMood = getDealerMood(gameState, difficulty);
@@ -635,14 +714,16 @@ export default {
                     `You win **${winAmount} Spirit Coins**!`
                 );
             } else if (playerTotal > dealerTotal) {
-              winAmount += playerDoubled ? bet * 2 : bet;
-              winAmount = Math.floor(
-                winAmount * DIFFICULTY_SETTINGS[difficulty].payoutMultiplier
-              );
-              currentBalance = await safeUpdateBalance(
-                interaction.user.id,
-                currentBalance + winAmount
-              );
+              // Calculate win amount with validation
+              const baseWin = playerDoubled ? bet * 4 : bet;
+              winAmount = calculatePayout(baseWin, 1, difficulty);
+              if (winAmount > 0) {
+                currentBalance = await BalanceManager.updateBalance(
+                  interaction.user.id,
+                  winAmount,
+                  currentBalance
+                );
+              }
 
               gameState.playerWinStreak++;
               dealerMood = getDealerMood(gameState, difficulty);
@@ -657,9 +738,10 @@ export default {
                 );
             } else if (playerTotal < dealerTotal) {
               const lossAmount = playerDoubled ? bet * 2 : bet;
-              currentBalance = await safeUpdateBalance(
+              currentBalance = await BalanceManager.updateBalance(
                 interaction.user.id,
-                currentBalance - lossAmount
+                -lossAmount,
+                currentBalance
               );
 
               gameState.dealerWinStreak++;
@@ -676,13 +758,27 @@ export default {
             } else {
               dealerMood = DEALER_MOODS.NEUTRAL;
 
+              // Return double bet if player doubled down
+              if (playerDoubled) {
+                const returnAmount = Math.floor(bet * 2); // Return both bets on push
+                if (!isNaN(returnAmount) && returnAmount > 0) {
+                  currentBalance = await BalanceManager.updateBalance(
+                    interaction.user.id,
+                    returnAmount,
+                    currentBalance
+                  );
+                }
+              }
+
               outcomeEmbed = new EmbedBuilder()
                 .setColor("#CCCC00")
                 .setTitle("Push")
                 .setDescription(
                   getDealerResponse("PUSH", dealerMood, difficulty) +
                     `\n\nBoth you and the dealer have **${playerTotal}**.\n` +
-                    "Your bet is returned."
+                    (playerDoubled
+                      ? "Your doubled bet is returned."
+                      : "Your bet is returned.")
                 );
 
               if (insuranceBet > 0) {
@@ -709,7 +805,7 @@ export default {
               },
               {
                 name: "Final Balance",
-                value: `${currentBalance} Spirit Coins`,
+                value: `${BalanceManager.format(currentBalance)} Spirit Coins`,
                 inline: false,
               },
             ]);
@@ -719,11 +815,11 @@ export default {
               components: [buildActionRow(true)],
             });
 
-            client.gamblingUsers.delete(interaction.user.id);
+            client.endGamblingSession(interaction.user.id);
           }
         } catch (error) {
           console.error("Game end error:", error);
-          client.gamblingUsers.delete(interaction.user.id);
+          client.endGamblingSession(interaction.user.id);
 
           const errorEmbed = new EmbedBuilder()
             .setColor("#880000")
@@ -741,7 +837,7 @@ export default {
       });
     } catch (error) {
       console.error("Devious cards error:", error);
-      client.gamblingUsers.delete(interaction.user.id);
+      client.endGamblingSession(interaction.user.id);
       await interaction.editReply({
         content: "An error occurred. Your bet has been safely returned.",
         components: [],

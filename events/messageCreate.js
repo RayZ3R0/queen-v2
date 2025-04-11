@@ -72,26 +72,31 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    // Check command cooldown without applying it yet.
-    const cd = await getCooldown(message, command);
-    if (cd) {
-      const totalSeconds = Math.floor(cd);
-      const days = Math.floor(totalSeconds / 86400);
-      const hours = Math.floor((totalSeconds % 86400) / 3600);
-      const minutes = Math.floor((totalSeconds % 3600) / 60);
-      const seconds = totalSeconds % 60;
-      const timeParts = [];
-      if (days) timeParts.push(`${days} day${days !== 1 ? "s" : ""}`);
-      if (hours) timeParts.push(`${hours} hour${hours !== 1 ? "s" : ""}`);
-      if (minutes)
-        timeParts.push(`${minutes} minute${minutes !== 1 ? "s" : ""}`);
-      if (seconds)
-        timeParts.push(`${seconds} second${seconds !== 1 ? "s" : ""}`);
-      const timeString = timeParts.join(" ");
-      return client.sendEmbed(
-        message,
-        `You are currently on cooldown. Please wait for **${timeString}** before trying again.`
-      );
+    // Skip cooldown check for owners
+    const isOwner = client.config.Owners.includes(author.id);
+
+    // Check command cooldown without applying it yet (only for non-owners)
+    if (!isOwner) {
+      const cd = await getCooldown(message, command);
+      if (cd) {
+        const totalSeconds = Math.floor(cd);
+        const days = Math.floor(totalSeconds / 86400);
+        const hours = Math.floor((totalSeconds % 86400) / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        const timeParts = [];
+        if (days) timeParts.push(`${days} day${days !== 1 ? "s" : ""}`);
+        if (hours) timeParts.push(`${hours} hour${hours !== 1 ? "s" : ""}`);
+        if (minutes)
+          timeParts.push(`${minutes} minute${minutes !== 1 ? "s" : ""}`);
+        if (seconds)
+          timeParts.push(`${seconds} second${seconds !== 1 ? "s" : ""}`);
+        const timeString = timeParts.join(" ");
+        return client.sendEmbed(
+          message,
+          `You are currently on cooldown. Please wait for **${timeString}** before trying again.`
+        );
+      }
     }
 
     // Check for gambling command and handle session
@@ -115,8 +120,20 @@ client.on("messageCreate", async (message) => {
         args,
         prefix,
       });
-      if (shouldSetCooldown !== false && !command.noCooldownOnFail) {
-        await setCooldown(message, command);
+
+      // Only apply cooldown for non-owners
+      if (
+        !isOwner &&
+        shouldSetCooldown !== false &&
+        !command.noCooldownOnFail
+      ) {
+        if (command.cooldown) {
+          // Apply the command's defined cooldown
+          await setCooldown(message, command);
+        } else {
+          // Apply a default 5-second cooldown for commands without defined cooldown
+          await setCooldown(message, { ...command, cooldown: 5 });
+        }
       }
     } catch (error) {
       console.error("Command error:", error);

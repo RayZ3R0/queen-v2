@@ -1,35 +1,27 @@
-import {
-  ApplicationCommandType,
-  PermissionFlagsBits,
-  ApplicationCommandOptionType,
-} from "discord.js";
+import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 import warndb from "../../../schema/warndb.js";
 import { checkRoleHierarchy } from "../../../utils/permissionHandler.js";
 
-/**
- * @type {import("../../../index").Scommand}
- */
 export default {
   name: "clearwarns",
-  description: "Clear all warnings of a user",
-  userPermissions: [PermissionFlagsBits.KickMembers],
-  botPermissions: [PermissionFlagsBits.SendMessages],
+  data: new SlashCommandBuilder()
+    .setName("clearwarns")
+    .setDescription("Clear all warnings of a user")
+    .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
+    .addUserOption((option) =>
+      option
+        .setName("user")
+        .setDescription("The user whose warnings to clear")
+        .setRequired(true)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("reason")
+        .setDescription("Reason for clearing warnings")
+        .setRequired(false)
+    ),
   category: "Moderation",
-  type: ApplicationCommandType.ChatInput,
-  options: [
-    {
-      name: "user",
-      description: "The user whose warnings to clear",
-      type: ApplicationCommandOptionType.User,
-      required: true,
-    },
-    {
-      name: "reason",
-      description: "Reason for clearing warnings",
-      type: ApplicationCommandOptionType.String,
-      required: false,
-    },
-  ],
+  botPermissions: [PermissionFlagsBits.SendMessages],
 
   run: async ({ client, interaction }) => {
     await interaction.deferReply();

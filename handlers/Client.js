@@ -10,6 +10,7 @@ import {
   MessageFlags,
 } from "discord.js";
 import settings from "../settings/config.js";
+import InviteManager from "../utils/inviteManager.js"; // Add this import
 
 export class Bot extends Client {
   constructor() {
@@ -49,47 +50,108 @@ export class Bot extends Client {
     this.cooldowns = new Collection();
     this.events = new Collection();
 
-    // Use a Map for gambling sessions (user ID => timeout ID)
+    // Managers
+    this.inviteManager = new InviteManager(this);
+
+    // Enhanced gambling session tracking
     this.activeGambleSessions = new Map();
+    this.sessionTimeouts = new Map();
   }
 
-  // Add a method to manage gambling sessions with automatic timeout
-  startGamblingSession(userId, message) {
-    // If user already has a session, clear its timeout
+  // Enhanced gambling session management
+  startGamblingSession(userId, messageOrInteraction, autoEnd = true) {
+    // If user has an existing session
     if (this.activeGambleSessions.has(userId)) {
-      clearTimeout(this.activeGambleSessions.get(userId).timeout);
+      const existingSession = this.activeGambleSessions.get(userId);
+
+      if (autoEnd) {
+        // Clean up existing session before starting new one
+        this.endGamblingSession(userId);
+      } else {
+        // Log session conflict for debugging
+        console.log(`Session conflict for user ${userId}:`, {
+          existing: existingSession,
+          new: messageOrInteraction.commandName || messageOrInteraction.content,
+        });
+        return false;
+      }
     }
 
-    // Create a new timeout that will automatically clear the session after 5 minutes
-    const timeout = setTimeout(() => {
-      if (this.activeGambleSessions.has(userId)) {
-        this.activeGambleSessions.delete(userId);
-        message.channel
-          .send(
-            `<@${userId}>, your gambling session was automatically closed due to inactivity.`
-          )
-          .catch((e) => {});
-      }
-    }, 5 * 60 * 1000); // 5-minute timeout
+    // Get command info
+    const commandName =
+      messageOrInteraction instanceof CommandInteraction
+        ? messageOrInteraction.commandName
+        : messageOrInteraction.content?.split(" ")[0] || "unknown";
 
-    // Store timeout ID alongside timestamp for debugging
-    this.activeGambleSessions.set(userId, {
-      timeout,
+    const channel = messageOrInteraction.channel;
+    const sessionId = `${userId}-${Date.now()}`;
+
+    // Create session timeout
+    const timeout = setTimeout(() => {
+      this.handleSessionTimeout(userId, channel);
+    }, 5 * 60 * 1000); // 5 minutes
+
+    // Store session data
+    const sessionData = {
+      userId,
+      sessionId,
+      commandName,
       startTime: Date.now(),
-      commandName: message.content.split(" ")[0],
-    });
+      channelId: channel.id,
+      timeout,
+    };
+
+    this.activeGambleSessions.set(userId, sessionData);
+    this.sessionTimeouts.set(sessionId, timeout);
 
     return true;
   }
 
+  // Handle session timeout
+  async handleSessionTimeout(userId, channel) {
+    try {
+      if (this.activeGambleSessions.has(userId)) {
+        const session = this.activeGambleSessions.get(userId);
+
+        // Clean up session data
+        this.activeGambleSessions.delete(userId);
+        this.sessionTimeouts.delete(session.sessionId);
+
+        // Notify user
+        await channel.send({
+          content: `<@${userId}>, your gambling session was automatically closed due to inactivity.`,
+          flags: MessageFlags.SuppressNotifications,
+        });
+      }
+    } catch (error) {
+      console.error("Session timeout handling error:", error);
+    }
+  }
+
+  // Enhanced session cleanup
   endGamblingSession(userId) {
     if (this.activeGambleSessions.has(userId)) {
-      // Clear the auto-cleanup timeout
-      clearTimeout(this.activeGambleSessions.get(userId).timeout);
+      const session = this.activeGambleSessions.get(userId);
+
+      // Clear all timeouts
+      clearTimeout(session.timeout);
+      this.sessionTimeouts.delete(session.sessionId);
+
+      // Remove session data
       this.activeGambleSessions.delete(userId);
       return true;
     }
     return false;
+  }
+
+  // Get active session info
+  getGamblingSession(userId) {
+    return this.activeGambleSessions.get(userId);
+  }
+
+  // Check if user has active gambling session
+  hasActiveGamblingSession(userId) {
+    return this.activeGambleSessions.has(userId);
   }
 
   async build(token) {
@@ -98,15 +160,28 @@ export class Bot extends Client {
       await this.login(token);
       console.log("> ✅ Bot logged in successfully");
 
+      // Wait for guilds to be available
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      // Force fetch all guilds first
+      await this.guilds.fetch();
+      console.log("> ✅ Guilds fetched");
+
+      // Initialize invite caching for all guilds after login
+      for (const [guildId, guild] of this.guilds.cache) {
+        await this.inviteManager.cacheGuildInvites(guild);
+      }
+      console.log("> ✅ Guild invites cache initialized");
+
       // Load handlers after successful login
       await loadHandlers(this);
+      console.log("> ✅ All handlers loaded successfully");
     } catch (error) {
       console.error("❌ Error during bot initialization:", error);
       process.exit(1);
     }
   }
 
-  // Remaining methods unchanged
   async sendEmbed(interaction, data, ephemeral = false) {
     return this.send(interaction, {
       embeds: [

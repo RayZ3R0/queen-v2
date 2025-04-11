@@ -1,11 +1,11 @@
 import {
-  ApplicationCommandType,
+  SlashCommandBuilder,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
   StringSelectMenuBuilder,
-  ComponentType,
+  MessageFlags,
 } from "discord.js";
 import {
   TUTORIAL_CHAPTERS,
@@ -14,17 +14,17 @@ import {
   getRecommendedPlay,
 } from "../../../utils/cardsTutorialUtils.js";
 
-/**
- * @type {import("../../../index").Scommand}
- */
 export default {
   name: "cardstutorial",
-  description: "Learn how to play the Devious Dealer card game",
+  data: new SlashCommandBuilder()
+    .setName("cardstutorial")
+    .setDescription("Learn how to play the Devious Dealer card game"),
   category: "Spirits",
-  type: ApplicationCommandType.ChatInput,
 
-  run: async ({ client, interaction }) => {
-    await interaction.deferReply();
+  run: async ({ client, interaction, isDeferred = false }) => {
+    if (!isDeferred) {
+      await interaction.deferReply();
+    }
 
     let currentChapter = "INTRODUCTION";
     let currentPage = 0;
@@ -206,7 +206,7 @@ export default {
         console.error("Tutorial interaction error:", error);
         await interaction.followUp({
           content: "An error occurred. Please try again.",
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
     });
