@@ -49,27 +49,23 @@ const normalizeMessage = (content) => {
   return content.toLowerCase().replace(/\s+/g, " ").trim();
 };
 
-// Function to extract all types of links from message
+// Function to extract http/https links from message
 const extractLinks = (content) => {
   const results = [];
 
-  // Match both markdown links [text](url) and regular URLs
-  const urlRegex =
-    /(?:\[(?:[^\]]*)\]\((https?:\/\/[^)]+)\))|(?:https?:\/\/[^\s\[\]()]+)/gi;
-  const matches = content.matchAll(urlRegex);
+  // Only match proper http/https URLs
+  const urlRegex = /https?:\/\/[^\s\[\]()]*/gi;
+  const matches = content.match(urlRegex) || [];
 
-  for (const match of matches) {
-    const markdownUrl = match[1]; // Captures URL from markdown format
-    const plainUrl = match[0]; // Full match for plain URLs
-
+  for (const url of matches) {
     try {
-      // Use markdown URL if available, otherwise use plain URL
-      const url = markdownUrl || plainUrl;
-      // Clean URL by removing markdown wrapper if present
-      const cleanUrl = url.replace(/^\[.*\]\((.*)\)$/, "$1");
-      results.push(cleanUrl);
+      const cleanUrl = url.trim();
+      // Ensure URL starts with http/https
+      if (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://")) {
+        results.push(cleanUrl);
+      }
     } catch (error) {
-      console.warn("Invalid URL format detected:", match[0]);
+      console.warn("Invalid URL format detected:", url);
     }
   }
 
@@ -189,10 +185,12 @@ export const analyzeMessage = (message) => {
     return msg.content === normalizedContent;
   }).length;
 
-  // Check for spam conditions
+  // Check for spam conditions - only check cross-channel spam with links
+  const hasLinks = links.length > 0;
   const isSpam = {
-    crossChannelSpam: channelCounts.size >= MESSAGE_DUPLICATE_THRESHOLD,
-    duplicateContent: duplicateMessages >= MESSAGE_DUPLICATE_THRESHOLD,
+    crossChannelSpam:
+      hasLinks && channelCounts.size >= MESSAGE_DUPLICATE_THRESHOLD,
+    duplicateContent: false, // Ignore same-channel duplicates
     linkSpam: false,
   };
 

@@ -201,22 +201,17 @@ client.on("messageCreate", async (message) => {
     const spamAnalysis = analyzeMessage(message);
 
     // Check if any spam conditions are met
-    if (
-      spamAnalysis.isSpam.crossChannelSpam ||
-      spamAnalysis.isSpam.duplicateContent ||
-      spamAnalysis.isSpam.linkSpam
-    ) {
+    // Only check for cross-channel spam with links
+    if (spamAnalysis.isSpam.crossChannelSpam) {
       // Get or create spam record
       const spamRecord = await AntiSpam.updateRecord(
         message.author.id,
         guild.id,
         {
-          type: spamAnalysis.isSpam.crossChannelSpam
-            ? "CROSS_CHANNEL"
-            : spamAnalysis.isSpam.linkSpam
-            ? "LINK_SPAM"
-            : "DUPLICATE",
-          channelIds: [channel.id],
+          type: "CROSS_CHANNEL",
+          channelIds: [
+            ...new Set(spamAnalysis.spamMessages.map((msg) => msg.channelId)),
+          ],
           content: content,
         }
       );
