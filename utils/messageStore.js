@@ -123,6 +123,7 @@ export const analyzeMessage = (message) => {
     content: normalizedContent,
     timestamp: now,
     channelId: channel.id,
+    messageId: message.id,
   });
 
   // Clean up old messages
@@ -203,11 +204,20 @@ export const analyzeMessage = (message) => {
     }
   }
 
+  // Get all messages involved in the spam pattern
+  const spamMessages = userMessageList
+    .filter((msg) => msg.content === normalizedContent)
+    .map((msg) => ({
+      channelId: msg.channelId,
+      messageId: msg.messageId,
+    }));
+
   return {
     isSpam,
     messageCount: userMessageList.length,
     uniqueChannels: channelCounts.size,
     duplicateCount: duplicateMessages,
+    spamMessages, // Add list of messages to delete
   };
 };
 

@@ -221,11 +221,53 @@ client.on("messageCreate", async (message) => {
         }
       );
 
-      // Delete the spam message
-      await message.delete().catch(console.error);
+      // Delete all spam messages across channels
+      const deletionPromises = spamAnalysis.spamMessages.map(
+        async ({ channelId, messageId }) => {
+          const channel = guild.channels.cache.get(channelId);
+          if (channel) {
+            try {
+              const msg = await channel.messages.fetch(messageId);
+              if (msg) await msg.delete();
+            } catch (error) {
+              console.warn(
+                `Failed to delete message ${messageId} in channel ${channelId}:`,
+                error
+              );
+            }
+          }
+        }
+      );
+
+      // Wait for all deletions to complete
+      await Promise.all(deletionPromises).catch(console.error);
 
       // Handle the offense
       await handleSpamOffense(message, spamRecord, trustAnalysis);
+
+      // Log deletion summary
+      const adminChannel = guild.channels.cache.get(ADMIN_CHANNEL_ID);
+      if (adminChannel) {
+        const deletionEmbed = new EmbedBuilder()
+          .setColor("Blue")
+          .setTitle("🧹 Spam Cleanup Summary")
+          .setDescription(`Cleaned up spam messages from ${message.author.tag}`)
+          .addFields(
+            {
+              name: "Messages Removed",
+              value: `${spamAnalysis.spamMessages.length}`,
+              inline: true,
+            },
+            {
+              name: "Channels Affected",
+              value: `${spamAnalysis.uniqueChannels}`,
+              inline: true,
+            }
+          )
+          .setTimestamp();
+
+        await adminChannel.send({ embeds: [deletionEmbed] });
+      }
 
       // Log the spam detection
       await sendLogEmbed({
