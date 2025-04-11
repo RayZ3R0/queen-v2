@@ -1,4 +1,4 @@
-import { GuildMember } from "discord.js";
+import { GuildMember, PermissionsBitField } from "discord.js";
 
 // Time constants in milliseconds
 const ONE_HOUR = 3600000;
@@ -73,8 +73,9 @@ function calculateThresholdMultiplier(trustScore) {
  * @returns {boolean} Whether user should be exempt
  */
 export const isUserExempt = (member) => {
-  // Exempt administrators
-  if (member.permissions.has("ADMINISTRATOR")) return true;
+  // Exempt administrators using proper permission flag
+  if (member.permissions.has(PermissionsBitField.Flags.Administrator))
+    return true;
 
   // Exempt users with trusted roles
   return member.roles.cache.some((role) => TRUSTED_ROLE_IDS.includes(role.id));
