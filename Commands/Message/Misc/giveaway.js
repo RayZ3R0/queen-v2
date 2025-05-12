@@ -208,214 +208,223 @@ export default {
             });
           }
 
-          // Ask for optional description
-          const promptEmbed = createEmbed(
-            "🎁 Giveaway Setup",
-            "Would you like to add a description to your giveaway? (Yes/No)\n\nYou have 30 seconds to respond.",
-            "#FF73FA",
-          );
-
+          // Ask for optional description and role requirement using a single embed with buttons
           let description = "";
           let requiredRoleId = null;
 
-          const promptMsg = await message.channel.send({
-            embeds: [promptEmbed],
+          const optionsEmbed = createEmbed(
+            "🎁 Giveaway Options",
+            "Do you want to add a description or role requirement to your giveaway?",
+            "#FF73FA",
+          );
+
+          // Create buttons for description and role requirement
+          const descriptionButton = new ButtonBuilder()
+            .setCustomId("add_description")
+            .setLabel("📝 Add Description")
+            .setStyle(ButtonStyle.Primary);
+
+          const roleButton = new ButtonBuilder()
+            .setCustomId("add_role")
+            .setLabel("👑 Add Role Requirement")
+            .setStyle(ButtonStyle.Secondary);
+
+          const skipButton = new ButtonBuilder()
+            .setCustomId("skip_options")
+            .setLabel("⏭️ Skip")
+            .setStyle(ButtonStyle.Success);
+
+          const optionsRow = new ActionRowBuilder().addComponents(
+            descriptionButton,
+            roleButton,
+            skipButton,
+          );
+
+          const optionsMsg = await message.channel.send({
+            embeds: [optionsEmbed],
+            components: [optionsRow],
           });
 
-          const filter = (m) => m.author.id === message.author.id;
-          const collector = message.channel.createMessageCollector({
-            filter,
-            time: 30000,
-            max: 1,
+          // Create a collector for the buttons
+          const optionsCollector = optionsMsg.createMessageComponentCollector({
+            componentType: ComponentType.Button,
+            time: 60000, // 1 minute timeout
+            filter: (i) => i.user.id === userId,
           });
 
-          await new Promise((resolve) => {
-            collector.on("collect", async (m) => {
-              const response = m.content.toLowerCase();
+          // Create a promise to track when setup is complete
+          const setupComplete = new Promise((resolve) => {
+            let descriptionAdded = false;
+            let roleAdded = false;
 
-              if (response === "yes" || response === "y") {
-                await promptMsg.edit({
-                  embeds: [
-                    createEmbed(
-                      "🎁 Giveaway Setup",
-                      "Please enter a description for your giveaway (max 1024 characters).\n\nYou have 60 seconds to respond.",
-                      "#FF73FA",
-                    ),
-                  ],
-                });
-
-                const descCollector = message.channel.createMessageCollector({
-                  filter,
-                  time: 60000,
-                  max: 1,
-                });
-
-                descCollector.on("collect", async (dm) => {
-                  description = dm.content.slice(0, 1024);
-
-                  // Ask for role requirement
-                  await promptMsg.edit({
-                    embeds: [
-                      createEmbed(
-                        "🎁 Giveaway Setup",
-                        "Would you like to require a role to enter? (Yes/No)\n\nYou have 30 seconds to respond.",
-                        "#FF73FA",
-                      ),
-                    ],
-                  });
-
-                  const roleCollector = message.channel.createMessageCollector({
-                    filter,
-                    time: 30000,
-                    max: 1,
-                  });
-
-                  roleCollector.on("collect", async (rm) => {
-                    const roleResponse = rm.content.toLowerCase();
-
-                    if (roleResponse === "yes" || roleResponse === "y") {
-                      await promptMsg.edit({
-                        embeds: [
-                          createEmbed(
-                            "🎁 Giveaway Setup",
-                            "Please mention the role or provide its ID.\n\nYou have 30 seconds to respond.",
-                            "#FF73FA",
-                          ),
+            optionsCollector.on("collect", async (interaction) => {
+              switch (interaction.customId) {
+                case "add_description": {
+                  // Create a modal for description input
+                  const modal = {
+                    title: "Giveaway Description",
+                    custom_id: "description_modal",
+                    components: [
+                      {
+                        type: 1, // Action Row
+                        components: [
+                          {
+                            type: 4, // Text Input
+                            custom_id: "description_input",
+                            label: "Enter your giveaway description",
+                            style: 2, // Paragraph style
+                            min_length: 1,
+                            max_length: 1024,
+                            placeholder:
+                              "Enter a detailed description for your giveaway...",
+                            required: true,
+                          },
                         ],
+                      },
+                    ],
+                  };
+
+                  await interaction.showModal(modal);
+
+                  try {
+                    // Wait for the modal submission
+                    const modalSubmission = await interaction.awaitModalSubmit({
+                      filter: (i) =>
+                        i.customId === "description_modal" &&
+                        i.user.id === userId,
+                      time: 120000, // 2 minutes
+                    });
+
+                    // Get the description from the modal
+                    description =
+                      modalSubmission.fields.getTextInputValue(
+                        "description_input",
+                      );
+                    descriptionAdded = true;
+
+                    await modalSubmission.reply({
+                      content: "✅ Description added successfully!",
+                      ephemeral: true,
+                    });
+
+                    // Update the embed to show description was added
+                    const updatedEmbed = createEmbed(
+                      "🎁 Giveaway Options",
+                      `Do you want to add a description or role requirement to your giveaway?\n\n${descriptionAdded ? "✅" : "❌"} Description\n${roleAdded ? "✅" : "❌"} Role Requirement`,
+                      "#FF73FA",
+                    );
+
+                    await optionsMsg.edit({
+                      embeds: [updatedEmbed],
+                      components: [optionsRow],
+                    });
+                  } catch (err) {
+                    console.error("Modal submission error:", err);
+                  }
+                  break;
+                }
+
+                case "add_role": {
+                  await interaction.reply({
+                    content:
+                      "Please mention the role or provide its ID in this channel.",
+                    ephemeral: true,
+                  });
+
+                  const filter = (m) => m.author.id === userId;
+                  const roleCollector =
+                    interaction.channel.createMessageCollector({
+                      filter,
+                      time: 30000,
+                      max: 1,
+                    });
+
+                  roleCollector.on("collect", async (m) => {
+                    // Try to extract role from mention or ID
+                    const roleMatch = m.content.match(/<@&(\d+)>/) || [
+                      null,
+                      m.content,
+                    ];
+                    const role = message.guild.roles.cache.get(roleMatch[1]);
+
+                    if (role) {
+                      requiredRoleId = role.id;
+                      roleAdded = true;
+
+                      await m.reply({
+                        content: `✅ Role requirement added: ${role.name}`,
                       });
 
-                      const finalRoleCollector =
-                        message.channel.createMessageCollector({
-                          filter,
-                          time: 30000,
-                          max: 1,
-                        });
+                      // Try to delete the user's message to keep the channel clean
+                      try {
+                        await m.delete();
+                      } catch (err) {
+                        // Ignore deletion errors
+                      }
 
-                      finalRoleCollector.on("collect", async (frm) => {
-                        // Try to extract role from mention or ID
-                        const roleMatch = frm.content.match(/<@&(\d+)>/) || [
-                          null,
-                          frm.content,
-                        ];
-                        const role = message.guild.roles.cache.get(
-                          roleMatch[1],
-                        );
+                      // Update the embed to show role was added
+                      const updatedEmbed = createEmbed(
+                        "🎁 Giveaway Options",
+                        `Do you want to add a description or role requirement to your giveaway?\n\n${descriptionAdded ? "✅" : "❌"} Description\n${roleAdded ? "✅" : "❌"} Role Requirement`,
+                        "#FF73FA",
+                      );
 
-                        if (role) {
-                          requiredRoleId = role.id;
-                          resolve();
-                        } else {
-                          await message.channel.send({
-                            embeds: [
-                              createEmbed(
-                                "❌ Invalid Role",
-                                "Could not find the specified role. Continuing without role requirement.",
-                                "Red",
-                              ),
-                            ],
-                          });
-                          resolve();
-                        }
-                      });
-
-                      finalRoleCollector.on("end", (collected) => {
-                        if (collected.size === 0) resolve();
+                      await optionsMsg.edit({
+                        embeds: [updatedEmbed],
+                        components: [optionsRow],
                       });
                     } else {
-                      resolve();
+                      await m.reply({
+                        content:
+                          "❌ Could not find the specified role. Please try the role button again.",
+                      });
+
+                      // Try to delete the user's message to keep the channel clean
+                      try {
+                        await m.delete();
+                      } catch (err) {
+                        // Ignore deletion errors
+                      }
                     }
                   });
 
                   roleCollector.on("end", (collected) => {
-                    if (collected.size === 0) resolve();
-                  });
-                });
-
-                descCollector.on("end", (collected) => {
-                  if (collected.size === 0) resolve();
-                });
-              } else {
-                // Ask for role requirement directly
-                await promptMsg.edit({
-                  embeds: [
-                    createEmbed(
-                      "🎁 Giveaway Setup",
-                      "Would you like to require a role to enter? (Yes/No)\n\nYou have 30 seconds to respond.",
-                      "#FF73FA",
-                    ),
-                  ],
-                });
-
-                const roleCollector = message.channel.createMessageCollector({
-                  filter,
-                  time: 30000,
-                  max: 1,
-                });
-
-                roleCollector.on("collect", async (rm) => {
-                  const roleResponse = rm.content.toLowerCase();
-
-                  if (roleResponse === "yes" || roleResponse === "y") {
-                    await promptMsg.edit({
-                      embeds: [
-                        createEmbed(
-                          "🎁 Giveaway Setup",
-                          "Please mention the role or provide its ID.\n\nYou have 30 seconds to respond.",
-                          "#FF73FA",
-                        ),
-                      ],
-                    });
-
-                    const finalRoleCollector =
-                      message.channel.createMessageCollector({
-                        filter,
-                        time: 30000,
-                        max: 1,
+                    if (collected.size === 0) {
+                      interaction.followUp({
+                        content: "❌ You didn't specify a role in time.",
+                        ephemeral: true,
                       });
+                    }
+                  });
+                  break;
+                }
 
-                    finalRoleCollector.on("collect", async (frm) => {
-                      // Try to extract role from mention or ID
-                      const roleMatch = frm.content.match(/<@&(\d+)>/) || [
-                        null,
-                        frm.content,
-                      ];
-                      const role = message.guild.roles.cache.get(roleMatch[1]);
-
-                      if (role) {
-                        requiredRoleId = role.id;
-                        resolve();
-                      } else {
-                        await message.channel.send({
-                          embeds: [
-                            createEmbed(
-                              "❌ Invalid Role",
-                              "Could not find the specified role. Continuing without role requirement.",
-                              "Red",
-                            ),
-                          ],
-                        });
-                        resolve();
-                      }
-                    });
-
-                    finalRoleCollector.on("end", (collected) => {
-                      if (collected.size === 0) resolve();
-                    });
-                  } else {
-                    resolve();
-                  }
-                });
-
-                roleCollector.on("end", (collected) => {
-                  if (collected.size === 0) resolve();
-                });
+                case "skip_options": {
+                  await interaction.reply({
+                    content: "✅ Creating giveaway without additional options!",
+                    ephemeral: true,
+                  });
+                  optionsCollector.stop();
+                  resolve();
+                  break;
+                }
               }
             });
 
-            collector.on("end", (collected) => {
-              if (collected.size === 0) resolve();
+            optionsCollector.on("end", (collected) => {
+              resolve();
             });
           });
+
+          // Wait for the setup to complete
+          await setupComplete;
+
+          // Clean up the options message
+          try {
+            await optionsMsg.delete();
+          } catch (err) {
+            // Ignore deletion errors
+          }
 
           // Create giveaway object
           const endTime = new Date(Date.now() + duration);
@@ -754,10 +763,11 @@ export default {
             });
           }
 
+          const previousWinners = giveaway.winners || [];
           const newWinners = selectWinners(
             giveaway.participants,
             winnerCount,
-            giveaway.winners, // Exclude previous winners
+            previousWinners,
           );
 
           if (newWinners.length === 0) {
@@ -765,23 +775,17 @@ export default {
               embeds: [
                 createEmbed(
                   "❌ No Eligible Winners",
-                  "There are no more eligible participants to select as winners.",
+                  "Could not find any eligible winners. All participants have already won.",
                   "Red",
                 ),
               ],
             });
           }
 
-          // Update giveaway with new winners
-          const updatedWinners = [...giveaway.winners, ...newWinners];
-          await Giveaway.findByIdAndUpdate(giveaway._id, {
-            $push: { winners: { $each: newWinners } },
-          });
-
-          // Announce new winners
+          // Get the channel and send rerolled winner announcement
+          const channel = await client.channels.fetch(giveaway.channelId);
           const winnerMentions = newWinners.map((id) => `<@${id}>`).join(", ");
 
-          const channel = await client.channels.fetch(giveaway.channelId);
           await channel.send({
             content: `🎉 Congratulations ${winnerMentions}! You've won the reroll for **${giveaway.prize}**!`,
             embeds: [
@@ -797,7 +801,7 @@ export default {
             embeds: [
               createEmbed(
                 "✅ Giveaway Rerolled",
-                `Rerolled ${newWinners.length} new winners for the giveaway **${giveaway.prize}**.`,
+                `Successfully rerolled **${newWinners.length}** winners for the giveaway **${giveaway.prize}**.`,
                 "Green",
               ),
             ],
@@ -808,7 +812,7 @@ export default {
           const activeGiveaways = await Giveaway.find({
             guildId,
             status: "ACTIVE",
-          }).sort({ endTime: 1 });
+          });
 
           if (activeGiveaways.length === 0) {
             return message.channel.send({
@@ -823,13 +827,18 @@ export default {
           }
 
           const giveawayList = activeGiveaways
-            .map((g, i) => {
+            .map((g, index) => {
               const remaining = getTimeRemaining(g.endTime);
-              return `**${i + 1}.** [${g.prize}](https://discord.com/channels/${guildId}/${
-                g.channelId
-              }/${g.messageId}) (${formatTime(remaining)})`;
+              const timeLeft = formatTime(remaining);
+              return `**${index + 1}.** [${g.prize}](https://discord.com/channels/${
+                g.guildId
+              }/${g.channelId}/${g.messageId})\n• Ends: <t:${Math.floor(
+                g.endTime / 1000,
+              )}:R>\n• Winner(s): ${g.winnerCount}\n• Entries: ${
+                g.participants.length
+              }`;
             })
-            .join("\n");
+            .join("\n\n");
 
           return message.channel.send({
             embeds: [
@@ -879,17 +888,20 @@ export default {
             status: "CANCELLED",
           });
 
-          // Update the giveaway message
           try {
+            // Update the giveaway message
             const channel = await client.channels.fetch(giveaway.channelId);
             const giveawayMessage = await channel.messages.fetch(
               giveaway.messageId,
             );
 
+            // Create cancelled giveaway embed
             const cancelledEmbed = new EmbedBuilder()
               .setTitle(`🚫 CANCELLED: ${giveaway.prize}`)
               .setDescription(
-                `This giveaway has been cancelled by ${message.author.tag}.`,
+                `${
+                  giveaway.description ? `${giveaway.description}\n\n` : ""
+                }This giveaway has been cancelled by a moderator.`,
               )
               .setColor("#808080")
               .setTimestamp();
@@ -913,133 +925,123 @@ export default {
           });
         }
 
-        default: {
+        default:
           return message.channel.send({
             embeds: [
               createEmbed(
-                "❓ Unknown Subcommand",
-                `Unknown subcommand: \`${subcommand}\`.\nUse \`${prefix}giveaway\` to see available subcommands.`,
+                "❌ Invalid Subcommand",
+                `Unknown subcommand: \`${subcommand}\`. Use \`${prefix}giveaway\` to see available commands.`,
                 "Red",
               ),
             ],
           });
-        }
       }
     } catch (error) {
       console.error("Error in giveaway command:", error);
       return message.channel.send({
         embeds: [
           createEmbed(
-            "⚠️ Error",
-            "An error occurred while processing your request.",
+            "❌ Error",
+            "An error occurred while processing your command.",
             "Red",
           ),
         ],
       });
     }
-
-    // Helper function to end a giveaway
-    async function endGiveaway(giveaway) {
-      // Update giveaway status
-      await Giveaway.findByIdAndUpdate(giveaway._id, {
-        status: "ENDED",
-      });
-
-      // Select winners
-      const winners = selectWinners(
-        giveaway.participants,
-        giveaway.winnerCount,
-      );
-
-      // Update giveaway with winners
-      if (winners.length > 0) {
-        await Giveaway.findByIdAndUpdate(giveaway._id, {
-          winners,
-        });
-      }
-
-      try {
-        // Update the giveaway message
-        const channel = await client.channels.fetch(giveaway.channelId);
-        const giveawayMessage = await channel.messages.fetch(
-          giveaway.messageId,
-        );
-
-        // Create ended giveaway embed
-        const endedEmbed = new EmbedBuilder()
-          .setTitle(`🎊 ENDED: ${giveaway.prize}`)
-          .setColor("#808080")
-          .setTimestamp();
-
-        if (winners.length > 0) {
-          const winnerMentions = winners.map((id) => `<@${id}>`).join(", ");
-          endedEmbed.setDescription(
-            `${giveaway.description ? `${giveaway.description}\n\n` : ""}` +
-              `**Winners:** ${winnerMentions}\n` +
-              `**Host:** <@${giveaway.creatorId}>\n` +
-              `**Entries:** ${giveaway.participants.length}`,
-          );
-
-          // Send winner announcement
-          await channel.send({
-            content: `🎉 Congratulations ${winnerMentions}! You've won **${giveaway.prize}**!`,
-            embeds: [
-              createEmbed(
-                "🎊 Giveaway Ended",
-                `**Prize:** ${giveaway.prize}\n**Winners:** ${winnerMentions}`,
-                "#FFD700",
-              ),
-            ],
-          });
-        } else {
-          endedEmbed.setDescription(
-            `${giveaway.description ? `${giveaway.description}\n\n` : ""}` +
-              "**Winners:** None (not enough participants)\n" +
-              `**Host:** <@${giveaway.creatorId}>\n` +
-              `**Entries:** ${giveaway.participants.length}`,
-          );
-
-          await channel.send({
-            embeds: [
-              createEmbed(
-                "🎊 Giveaway Ended",
-                `No winners were selected for **${giveaway.prize}** because there weren't enough participants.`,
-                "#FFD700",
-              ),
-            ],
-          });
-        }
-
-        await giveawayMessage.edit({
-          embeds: [endedEmbed],
-          components: [],
-        });
-      } catch (error) {
-        console.error("Error updating ended giveaway message:", error);
-      }
-    }
-
-    // Helper function to select random winners
-    function selectWinners(participants, count, exclude = []) {
-      const eligibleParticipants = participants.filter(
-        (p) => !exclude.includes(p),
-      );
-
-      if (eligibleParticipants.length === 0) return [];
-
-      const winners = [];
-      const participantsCopy = [...eligibleParticipants];
-
-      // Select random winners
-      const winnerCount = Math.min(count, participantsCopy.length);
-
-      for (let i = 0; i < winnerCount; i++) {
-        const randomIndex = Math.floor(Math.random() * participantsCopy.length);
-        winners.push(participantsCopy[randomIndex]);
-        participantsCopy.splice(randomIndex, 1);
-      }
-
-      return winners;
-    }
   },
 };
+
+async function endGiveaway(giveaway) {
+  // Update giveaway status
+  await Giveaway.findByIdAndUpdate(giveaway._id, {
+    status: "ENDED",
+  });
+
+  // Select winners
+  const winners = selectWinners(giveaway.participants, giveaway.winnerCount);
+
+  // Update giveaway with winners
+  if (winners.length > 0) {
+    await Giveaway.findByIdAndUpdate(giveaway._id, {
+      winners,
+    });
+  }
+
+  try {
+    // Update the giveaway message
+    const channel = await client.channels.fetch(giveaway.channelId);
+    const giveawayMessage = await channel.messages.fetch(giveaway.messageId);
+
+    // Create ended giveaway embed
+    const endedEmbed = new EmbedBuilder()
+      .setTitle(`🎊 ENDED: ${giveaway.prize}`)
+      .setColor("#808080")
+      .setTimestamp();
+
+    if (winners.length > 0) {
+      const winnerMentions = winners.map((id) => `<@${id}>`).join(", ");
+      endedEmbed.setDescription(
+        `${giveaway.description ? `${giveaway.description}\n\n` : ""}` +
+          `**Winners:** ${winnerMentions}\n` +
+          `**Host:** <@${giveaway.creatorId}>\n` +
+          `**Entries:** ${giveaway.participants.length}`,
+      );
+
+      // Send winner announcement
+      await channel.send({
+        content: `🎉 Congratulations ${winnerMentions}! You've won **${giveaway.prize}**!`,
+        embeds: [
+          createEmbed(
+            "🎊 Giveaway Ended",
+            `**Prize:** ${giveaway.prize}\n**Winners:** ${winnerMentions}`,
+            "#FFD700",
+          ),
+        ],
+      });
+    } else {
+      endedEmbed.setDescription(
+        `${giveaway.description ? `${giveaway.description}\n\n` : ""}` +
+          "**Winners:** None (not enough participants)\n" +
+          `**Host:** <@${giveaway.creatorId}>\n` +
+          `**Entries:** ${giveaway.participants.length}`,
+      );
+
+      await channel.send({
+        embeds: [
+          createEmbed(
+            "🎊 Giveaway Ended",
+            `No winners were selected for **${giveaway.prize}** because there weren't enough participants.`,
+            "#FFD700",
+          ),
+        ],
+      });
+    }
+
+    await giveawayMessage.edit({
+      embeds: [endedEmbed],
+      components: [],
+    });
+  } catch (error) {
+    console.error("Error updating ended giveaway message:", error);
+  }
+}
+
+function selectWinners(participants, count, exclude = []) {
+  const eligibleParticipants = participants.filter((p) => !exclude.includes(p));
+
+  if (eligibleParticipants.length === 0) return [];
+
+  const winners = [];
+  const participantsCopy = [...eligibleParticipants];
+
+  // Select random winners
+  const winnerCount = Math.min(count, participantsCopy.length);
+
+  for (let i = 0; i < winnerCount; i++) {
+    const randomIndex = Math.floor(Math.random() * participantsCopy.length);
+    winners.push(participantsCopy[randomIndex]);
+    participantsCopy.splice(randomIndex, 1);
+  }
+
+  return winners;
+}
