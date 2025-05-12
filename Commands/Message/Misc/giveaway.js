@@ -479,12 +479,13 @@ export default {
           });
 
           // Create a collector for the buttons
-          const collector = giveawayMessage.createMessageComponentCollector({
-            componentType: ComponentType.Button,
-            time: duration,
-          });
+          const buttonCollector =
+            giveawayMessage.createMessageComponentCollector({
+              componentType: ComponentType.Button,
+              time: duration,
+            });
 
-          collector.on("collect", async (interaction) => {
+          buttonCollector.on("collect", async (interaction) => {
             // Fetch the latest giveaway data
             const currentGiveaway = await Giveaway.findOne({
               messageId: giveawayMessage.id,
