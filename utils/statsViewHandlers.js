@@ -14,91 +14,171 @@ const timeframes = {
   all: { label: "All Time", hours: null },
 };
 
+const ignoredChannelIds = [
+  "955399577895317524",
+  "957979414812065852",
+  "1006477488014249994",
+  "972865600680497172",
+  "957981195604471858",
+  "1309079456068927499",
+];
+
 async function handleChannels(interaction, embed, timeframe) {
   try {
     const guild = interaction.guild;
     const hours = timeframes[timeframe].hours;
 
-    // Get channel stats from message activity
-    const query = { guildId: guild.id };
+    // Get current channel counts, excluding ignored channels
+    const channels = {
+      text: guild.channels.cache.filter(
+        (c) => c.type === 0 && !ignoredChannelIds.includes(c.id),
+      ).size,
+      voice: guild.channels.cache.filter(
+        (c) => c.type === 2 && !ignoredChannelIds.includes(c.id),
+      ).size,
+      category: guild.channels.cache.filter(
+        (c) => c.type === 4 && !ignoredChannelIds.includes(c.id),
+      ).size,
+      announcement: guild.channels.cache.filter(
+        (c) => c.type === 5 && !ignoredChannelIds.includes(c.id),
+      ).size,
+      forum: guild.channels.cache.filter(
+        (c) => c.type === 15 && !ignoredChannelIds.includes(c.id),
+      ).size,
+    };
+
+    // Get channel activity metrics
+    let query = { guildId: guild.id };
     if (hours) {
-      query.lastActive = {
+      query.timestamp = {
         $gte: new Date(Date.now() - hours * 60 * 60 * 1000),
       };
     }
 
-    const channelStats = await MemberActivity.aggregate([
-      { $match: query },
-      {
-        $project: {
-          channelDistribution: {
-            $objectToArray: "$messageStats.channelDistribution",
-          },
-        },
-      },
-      { $unwind: "$channelDistribution" },
-      {
-        $group: {
-          _id: "$channelDistribution.k",
-          messageCount: { $sum: "$channelDistribution.v" },
-          uniqueUsers: { $addToSet: "$_id" },
-        },
-      },
-      { $sort: { messageCount: -1 } },
-    ]);
+    const snapshots = await GuildSnapshot.find(query).sort({ timestamp: 1 });
 
-    if (channelStats.length === 0) {
+    if (!snapshots || snapshots.length === 0) {
       embed.setDescription(
-        `No channel activity data available for ${guild.name}`
+        `No channel activity data available for ${timeframes[timeframe].label}`,
       );
       return [];
     }
 
-    // Get channel names and combine stats
-    const topChannels = await Promise.all(
-      channelStats.slice(0, 10).map(async (stat) => {
-        const channel = await guild.channels.fetch(stat._id).catch(() => null);
+    // Aggregate message and voice activity per channel
+    const textChannelActivity = new Map();
+    const voiceChannelActivity = new Map();
+
+    snapshots.forEach((snapshot) => {
+      if (
+        snapshot?.metrics?.messages?.perChannel &&
+        snapshot.metrics.messages.perChannel instanceof Map
+      ) {
+        snapshot.metrics.messages.perChannel.forEach((count, channelId) => {
+          // Skip ignored channels
+          if (ignoredChannelIds.includes(channelId)) return;
+
+          textChannelActivity.set(
+            channelId,
+            (textChannelActivity.get(channelId) || 0) + count,
+          );
+        });
+      }
+
+      if (
+        snapshot?.metrics?.voice?.perChannel &&
+        snapshot.metrics.voice.perChannel instanceof Map
+      ) {
+        snapshot.metrics.voice.perChannel.forEach((minutes, channelId) => {
+          // Skip ignored channels
+          if (ignoredChannelIds.includes(channelId)) return;
+
+          voiceChannelActivity.set(
+            channelId,
+            (voiceChannelActivity.get(channelId) || 0) + minutes,
+          );
+        });
+      }
+    });
+
+    // Get top 5 text and voice channels
+    const topTextChannels = [...textChannelActivity.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id, count]) => {
+        const channel = guild.channels.cache.get(id);
         return {
-          name: channel?.name || "Deleted Channel",
-          messageCount: stat.messageCount,
-          uniqueUsers: stat.uniqueUsers.length,
+          name: channel ? channel.name : "Unknown Channel",
+          count,
         };
-      })
-    );
+      });
 
-    embed.setDescription(`Channel Statistics for ${guild.name}`).setFields([
-      {
-        name: "Most Active Channels",
-        value:
-          topChannels
-            .map(
-              (ch, i) =>
-                `${i + 1}. #${ch.name} - ${ch.messageCount} messages by ${
-                  ch.uniqueUsers
-                } users`
-            )
-            .join("\n") || "No channel data available",
-      },
-    ]);
+    const topVoiceChannels = [...voiceChannelActivity.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id, minutes]) => {
+        const channel = guild.channels.cache.get(id);
+        return {
+          name: channel ? channel.name : "Unknown Channel",
+          minutes,
+        };
+      });
 
-    // Generate channel activity chart
-    const channelChart = await generateBarChart(
-      topChannels.map((ch) => ch.name),
-      [
+    embed
+      .setDescription(`Channel Statistics for ${interaction.guild.name}`)
+      .addFields([
         {
-          label: "Messages",
-          data: topChannels.map((ch) => ch.messageCount),
-          backgroundColor: "#5865F2",
+          name: "Channel Distribution",
+          value: `Text: ${channels.text}\nVoice: ${channels.voice}\nCategories: ${channels.category}\nAnnouncement: ${channels.announcement}\nForum: ${channels.forum}`,
+          inline: false,
+        },
+        {
+          name: "Top Text Channels",
+          value:
+            topTextChannels.length > 0
+              ? topTextChannels
+                  .map((c) => `${c.name}: ${c.count} messages`)
+                  .join("\n")
+              : "No data available",
+          inline: true,
+        },
+        {
+          name: "Top Voice Channels",
+          value:
+            topVoiceChannels.length > 0
+              ? topVoiceChannels
+                  .map((c) => `${c.name}: ${Math.round(c.minutes / 60)} hours`)
+                  .join("\n")
+              : "No data available",
+          inline: true,
+        },
+      ]);
+
+    // Generate chart
+    const chartData = {
+      labels: ["Text", "Voice", "Category", "Announcement", "Forum"],
+      datasets: [
+        {
+          data: [
+            channels.text,
+            channels.voice,
+            channels.category,
+            channels.announcement,
+            channels.forum,
+          ],
         },
       ],
-      "Channel Activity Distribution"
-    );
+    };
 
-    return [new AttachmentBuilder(channelChart, { name: "channel_stats.png" })];
+    const chart = await generatePieChart(chartData, "Channel Distribution");
+    const attachment = new AttachmentBuilder(chart, {
+      name: "channel_stats.png",
+    });
+
+    return [attachment];
   } catch (error) {
     console.error("Error in handleChannels:", error);
     embed.setDescription(
-      `Error generating channel statistics for ${interaction.guild.name}`
+      `Error generating channel statistics for ${interaction.guild.name}`,
     );
     return [];
   }
@@ -108,12 +188,12 @@ async function handleOverview(interaction, embed, timeframe) {
   try {
     const stats = await generateOverviewStats(
       interaction.guild,
-      timeframes[timeframe].hours
+      timeframes[timeframe].hours,
     );
 
     embed
       .setDescription(`Server Overview for ${interaction.guild.name}`)
-      .setFields([
+      .addFields([
         {
           name: "Members",
           value: `Total: ${stats.currentStats.totalMembers}\nOnline: ${stats.currentStats.onlineMembers}\nBots: ${stats.currentStats.botCount}`,
@@ -129,14 +209,22 @@ async function handleOverview(interaction, embed, timeframe) {
           value: `Text: ${stats.currentStats.textChannels}\nVoice: ${stats.currentStats.voiceChannels}`,
           inline: true,
         },
-      ])
-      .setImage("attachment://trend.png");
+      ]);
 
-    return stats.files || [];
+    // Generate overview chart if we have data
+    if (stats.trendData?.messages?.length > 0) {
+      const chart = await generateOverviewCharts(stats.trendData);
+      const attachment = new AttachmentBuilder(chart, {
+        name: "trend.png",
+      });
+      return [attachment];
+    }
+
+    return [];
   } catch (error) {
     console.error("Error in handleOverview:", error);
     embed.setDescription(
-      `Error generating overview statistics for ${interaction.guild.name}`
+      `Error generating overview statistics for ${interaction.guild.name}`,
     );
     return [];
   }
@@ -148,51 +236,65 @@ async function handleMembers(interaction, embed, timeframe) {
     const hours = timeframes[timeframe].hours;
     const currentMembers = guild.members.cache.filter((m) => !m.user.bot).size;
 
-    const query = { guildId: guild.id };
-    if (hours) {
-      query.joinTimestamp = {
-        $gte: new Date(Date.now() - hours * 60 * 60 * 1000),
-      };
-    }
+    // Find all members for this guild, we'll filter by timeframe in memory for more accurate results
+    const allMemberStats = await MemberActivity.find({
+      guildId: guild.id,
+    });
 
-    const memberStats = await MemberActivity.find(query);
+    // Filter members by timeframe
+    const timeframeStart = hours ? Date.now() - hours * 60 * 60 * 1000 : 0;
+
+    // Calculate joins within timeframe
+    const joinsInTimeframe = allMemberStats.filter((member) => {
+      if (!member.joinTimestamp) return false;
+      return (
+        timeframeStart === 0 ||
+        new Date(member.joinTimestamp).getTime() >= timeframeStart
+      );
+    });
 
     // Calculate total leaves within timeframe
-    const totalLeaves = memberStats.reduce((total, member) => {
+    const totalLeaves = allMemberStats.reduce((total, member) => {
       if (!Array.isArray(member.leaveHistory)) return total;
 
       // Only count leaves that happened within the timeframe
       const leavesInTimeframe = member.leaveHistory.filter((leave) => {
         if (!leave?.leftAt) return false;
-        if (!hours) return true; // All time
+        if (timeframeStart === 0) return true; // All time
         const leaveTime = new Date(leave.leftAt).getTime();
-        return leaveTime >= Date.now() - hours * 60 * 60 * 1000;
+        return leaveTime >= timeframeStart;
       });
 
       return total + leavesInTimeframe.length;
     }, 0);
 
     const stats = {
-      totalJoins: memberStats.length,
+      totalJoins: joinsInTimeframe.length,
       currentMembers,
+      totalLeaves,
       retentionRate:
-        memberStats.length > 0
-          ? ((1 - totalLeaves / memberStats.length) * 100).toFixed(2)
+        joinsInTimeframe.length > 0
+          ? ((currentMembers / joinsInTimeframe.length) * 100).toFixed(2)
           : "100.00", // Show 100% when there's no data
     };
 
-    // Update embed with fields and image
+    // Update embed with fields
     embed
       .setDescription(`Member Statistics for ${interaction.guild.name}`)
-      .setFields([
+      .addFields([
         {
           name: "Current Members",
           value: stats.currentMembers.toString(),
           inline: true,
         },
         {
-          name: "Total Tracked Joins",
+          name: "Joins (This Period)",
           value: stats.totalJoins.toString(),
+          inline: true,
+        },
+        {
+          name: "Leaves (This Period)",
+          value: stats.totalLeaves.toString(),
           inline: true,
         },
         {
@@ -200,11 +302,10 @@ async function handleMembers(interaction, embed, timeframe) {
           value: `${stats.retentionRate}%`,
           inline: true,
         },
-      ])
-      .setImage("attachment://member_trend.png");
+      ]);
 
     // Only try to generate charts if we have data
-    if (memberStats.length === 0) {
+    if (joinsInTimeframe.length === 0 && totalLeaves === 0) {
       return [];
     }
 
@@ -221,11 +322,11 @@ async function handleMembers(interaction, embed, timeframe) {
 
     try {
       // Process joins with validation
-      memberStats.forEach((member) => {
+      joinsInTimeframe.forEach((member) => {
         try {
           if (member?.joinTimestamp) {
             const joinDate = new Date(
-              member.joinTimestamp
+              member.joinTimestamp,
             ).toLocaleDateString();
             if (joinDate) {
               joinsByDay.set(joinDate, (joinsByDay.get(joinDate) || 0) + 1);
@@ -237,12 +338,15 @@ async function handleMembers(interaction, embed, timeframe) {
             member.leaveHistory.forEach((leave) => {
               try {
                 if (leave?.leftAt) {
-                  const leaveDate = new Date(leave.leftAt).toLocaleDateString();
-                  if (leaveDate) {
-                    leavesByDay.set(
-                      leaveDate,
-                      (leavesByDay.get(leaveDate) || 0) + 1
-                    );
+                  const leaveTime = new Date(leave.leftAt).getTime();
+                  if (timeframeStart === 0 || leaveTime >= timeframeStart) {
+                    const leaveDate = new Date(leaveTime).toLocaleDateString();
+                    if (leaveDate) {
+                      leavesByDay.set(
+                        leaveDate,
+                        (leavesByDay.get(leaveDate) || 0) + 1,
+                      );
+                    }
                   }
                 }
               } catch (err) {
@@ -259,79 +363,108 @@ async function handleMembers(interaction, embed, timeframe) {
       return [];
     }
 
-    // Get all unique dates and sort them
-    const allDates = [
-      ...new Set([...joinsByDay.keys(), ...leavesByDay.keys()]),
-    ].sort();
+    // Create daily buckets for data visualization
+    const startDate = new Date(
+      timeframeStart || Date.now() - 60 * 60 * 24 * 30 * 1000,
+    ); // Default to 30 days if all time
+    const endDate = new Date();
+    const dateRange = [];
 
-    // Ensure we have data before trying to create a chart
-    if (allDates.length === 0) {
+    // Generate date range (up to 30 points max to avoid overcrowding)
+    let interval = 1; // days
+    if (hours === null) {
+      // All time
+      const totalDays = Math.ceil(
+        (Date.now() -
+          new Date(
+            Math.min(
+              ...allMemberStats.map((m) =>
+                new Date(m.joinTimestamp || Date.now()).getTime(),
+              ),
+            ),
+          ).getTime()) /
+          (1000 * 60 * 60 * 24),
+      );
+      interval = Math.max(1, Math.ceil(totalDays / 30));
+    } else if (hours > 168) {
+      // More than 7 days
+      interval = Math.ceil(hours / 24 / 30);
+    }
+
+    // Generate dates
+    for (
+      let d = new Date(startDate);
+      d <= endDate;
+      d.setDate(d.getDate() + interval)
+    ) {
+      dateRange.push(new Date(d));
+    }
+
+    // Ensure we include the last date if it's not already there
+    if (
+      dateRange[dateRange.length - 1].toDateString() !== endDate.toDateString()
+    ) {
+      dateRange.push(endDate);
+    }
+
+    // Initialize data arrays with dates and zero counts
+    joinLeaveData.dates = dateRange.map((d) => d.toLocaleDateString());
+    joinLeaveData.joins = Array(dateRange.length).fill(0);
+    joinLeaveData.leaves = Array(dateRange.length).fill(0);
+
+    // Fill join data
+    joinsByDay.forEach((count, date) => {
+      const index = joinLeaveData.dates.indexOf(date);
+      if (index !== -1) {
+        joinLeaveData.joins[index] = count;
+      }
+    });
+
+    // Fill leave data
+    leavesByDay.forEach((count, date) => {
+      const index = joinLeaveData.dates.indexOf(date);
+      if (index !== -1) {
+        joinLeaveData.leaves[index] = count;
+      }
+    });
+
+    // Generate chart data
+    const chartData = {
+      labels: joinLeaveData.dates,
+      datasets: [
+        {
+          label: "Joins",
+          data: joinLeaveData.joins,
+          borderColor: "rgba(75, 192, 192, 1)",
+          backgroundColor: "rgba(75, 192, 192, 0.2)",
+        },
+        {
+          label: "Leaves",
+          data: joinLeaveData.leaves,
+          borderColor: "rgba(255, 99, 132, 1)",
+          backgroundColor: "rgba(255, 99, 132, 0.2)",
+        },
+      ],
+    };
+
+    // Generate and return chart
+    try {
+      const chart = await generateLineChart(
+        chartData,
+        "Member Join/Leave Trends",
+      );
+      const attachment = new AttachmentBuilder(chart, {
+        name: "member_trend.png",
+      });
+      return [attachment];
+    } catch (error) {
+      console.error("Error generating member chart:", error);
       return [];
     }
-
-    joinLeaveData.dates = allDates;
-    joinLeaveData.joins = allDates.map((date) => joinsByDay.get(date) || 0);
-    joinLeaveData.leaves = allDates.map((date) => leavesByDay.get(date) || 0);
-
-    try {
-      // Additional validation for chart data
-      if (
-        !joinLeaveData.dates.length ||
-        !joinLeaveData.joins.length ||
-        !joinLeaveData.leaves.length
-      ) {
-        console.log("No valid data for chart generation");
-        return [];
-      }
-
-      // Ensure all data points are valid numbers
-      const validJoins = joinLeaveData.joins
-        .map(Number)
-        .filter((n) => !isNaN(n));
-      const validLeaves = joinLeaveData.leaves
-        .map(Number)
-        .filter((n) => !isNaN(n));
-
-      // Only generate chart if we have valid numeric data
-      if (
-        validJoins.length === joinLeaveData.dates.length &&
-        validLeaves.length === joinLeaveData.dates.length &&
-        (validJoins.some((v) => v > 0) || validLeaves.some((v) => v > 0))
-      ) {
-        const trendChart = await generateLineChart(
-          joinLeaveData.dates,
-          [
-            {
-              label: "Joins",
-              data: validJoins,
-              borderColor: "#4CAF50",
-            },
-            {
-              label: "Leaves",
-              data: validLeaves,
-              borderColor: "#F44336",
-            },
-          ],
-          "Member Join/Leave Trend"
-        );
-
-        if (trendChart) {
-          return [
-            new AttachmentBuilder(trendChart, { name: "member_trend.png" }),
-          ];
-        }
-      } else {
-        console.log("Data validation failed for chart generation");
-      }
-    } catch (error) {
-      console.error("Error generating member trend chart:", error);
-    }
-
-    return [];
   } catch (error) {
     console.error("Error in handleMembers:", error);
     embed.setDescription(
-      `Error generating member statistics for ${interaction.guild.name}`
+      `Error generating member statistics for ${interaction.guild.name}`,
     );
     return [];
   }
@@ -342,140 +475,241 @@ async function handleActivity(interaction, embed, timeframe) {
     const guild = interaction.guild;
     const hours = timeframes[timeframe].hours;
 
-    // Query for activity data
+    // Query for members active within the timeframe
     const query = { guildId: guild.id };
     if (hours) {
-      query.lastActive = {
-        $gte: new Date(Date.now() - hours * 60 * 60 * 1000),
-      };
+      query.$or = [
+        {
+          "messageStats.lastMessageTimestamp": {
+            $gte: new Date(Date.now() - hours * 60 * 60 * 1000),
+          },
+        },
+        {
+          "voiceStats.lastActive": {
+            $gte: new Date(Date.now() - hours * 60 * 60 * 1000),
+          },
+        },
+      ];
     }
 
-    const activityStats = await MemberActivity.find(query)
-      .sort({ activityScore: -1 })
-      .limit(10);
+    const memberActivity = await MemberActivity.find(query).sort({
+      activityScore: -1,
+    });
 
-    // Handle no data case
-    if (!activityStats?.length) {
+    if (!memberActivity || memberActivity.length === 0) {
       embed.setDescription(
-        `Activity Statistics for ${guild.name}\n\nNo activity data available yet.`
+        `No activity data available for ${timeframes[timeframe].label}`,
       );
       return [];
     }
 
-    // Process member data with detailed stats
-    const topMembers = await Promise.all(
-      activityStats.map(async (stat, index) => {
-        const member = await guild.members.fetch(stat.userId).catch(() => null);
-        const voiceHours = Math.floor(stat.voiceStats.totalMinutes / 60);
-        const voiceMinutes = stat.voiceStats.totalMinutes % 60;
+    // Calculate activity metrics
+    // Calculate activity metrics
+    const activityStats = {
+      totalMessages: memberActivity.reduce((sum, member) => {
+        let count = 0;
 
-        return {
-          userId: stat.userId,
-          displayName: member?.displayName || "Unknown User",
-          score: Math.round(stat.activityScore),
-          messageCount: stat.messageStats.totalCount,
-          voiceTime:
-            voiceHours > 0
-              ? `${voiceHours}h ${voiceMinutes}m`
-              : `${voiceMinutes}m`,
-          lastActive: stat.lastActive
-            ? `<t:${Math.floor(stat.lastActive.getTime() / 1000)}:R>`
-            : "Never",
-        };
-      })
+        // Only count messages from non-ignored channels
+        if (member.messageStats?.channelDistribution instanceof Map) {
+          member.messageStats.channelDistribution.forEach(
+            (channelCount, channelId) => {
+              if (!ignoredChannelIds.includes(channelId)) {
+                count += channelCount;
+              }
+            },
+          );
+        } else {
+          count = member.messageStats?.totalCount || 0;
+        }
+
+        return sum + count;
+      }, 0),
+      totalVoiceMinutes: memberActivity.reduce((sum, member) => {
+        let minutes = 0;
+
+        // Only count voice activity from non-ignored channels
+        if (member.voiceStats?.channelMinutes instanceof Map) {
+          member.voiceStats.channelMinutes.forEach(
+            (channelMinutes, channelId) => {
+              if (!ignoredChannelIds.includes(channelId)) {
+                minutes += channelMinutes;
+              }
+            },
+          );
+        } else {
+          minutes = member.voiceStats?.totalMinutes || 0;
+        }
+
+        return sum + minutes;
+      }, 0),
+      messageAuthors: memberActivity.filter(
+        (m) => m.messageStats?.totalCount > 0,
+      ).length,
+      voiceUsers: memberActivity.filter((m) => m.voiceStats?.totalMinutes > 0)
+        .length,
+      topMessageSenders: [],
+      topVoiceUsers: [],
+    };
+
+    // Get top 5 message senders
+    activityStats.topMessageSenders = memberActivity
+      .filter((m) => m.messageStats?.totalCount > 0)
+      .sort((a, b) => b.messageStats.totalCount - a.messageStats.totalCount)
+      .slice(0, 5)
+      .map((m) => ({
+        userId: m.userId,
+        messageCount: m.messageStats.totalCount,
+      }));
+
+    // Get top 5 voice users
+    activityStats.topVoiceUsers = memberActivity
+      .filter((m) => m.voiceStats?.totalMinutes > 0)
+      .sort((a, b) => b.voiceStats.totalMinutes - a.voiceStats.totalMinutes)
+      .slice(0, 5)
+      .map((m) => ({
+        userId: m.userId,
+        voiceMinutes: m.voiceStats.totalMinutes,
+      }));
+
+    // Format user mentions
+    const formatUserMention = async (userId, value) => {
+      try {
+        const member = await guild.members.fetch(userId).catch(() => null);
+        return member
+          ? `${member.user.username}: ${value}`
+          : `Unknown User: ${value}`;
+      } catch (error) {
+        return `User ${userId}: ${value}`;
+      }
+    };
+
+    const topMessageFields = await Promise.all(
+      activityStats.topMessageSenders.map((u) =>
+        formatUserMention(u.userId, `${u.messageCount} messages`),
+      ),
     );
 
-    const timeframeLabel = timeframes[timeframe].label.toLowerCase();
-
-    // Update embed with detailed member stats
-    embed
-      .setDescription(`Activity Statistics for ${guild.name}`)
-      .setFields([
-        {
-          name: "Most Active Members",
-          value:
-            topMembers
-              .map(
-                (member, i) =>
-                  `${i + 1}. **${member.displayName}** (Score: ${
-                    member.score
-                  })\n` +
-                  `┗ Messages: ${member.messageCount} | Voice: ${member.voiceTime} | Last: ${member.lastActive}`
-              )
-              .join("\n\n") || "No active members found",
-        },
-        {
-          name: "Activity Score Info",
-          value: [
-            "• Each message = 2 points",
-            "• Voice time = 1 point per minute",
-            "• Bonus points for recent activity",
-            "• Scores weighted by activity age",
-            "• Higher weight for newer activity",
-          ].join("\n"),
-          inline: false,
-        },
-      ])
-      .setImage("attachment://activity_scores.png");
-
-    // Generate charts
-    const files = [];
-
-    // Activity score chart
-    const scoreChart = await generateBarChart(
-      topMembers.map((m) => m.displayName),
-      [
-        {
-          label: "Activity Score",
-          data: topMembers.map((m) => m.score),
-        },
-      ],
-      "Top Member Activity Scores"
-    );
-    files.push(
-      new AttachmentBuilder(scoreChart, { name: "activity_scores.png" })
+    const topVoiceFields = await Promise.all(
+      activityStats.topVoiceUsers.map((u) =>
+        formatUserMention(u.userId, `${Math.round(u.voiceMinutes / 60)} hours`),
+      ),
     );
 
-    // Hourly distribution chart
-    // Process hourly activity with string keys
-    const hourlyData = new Array(24).fill(0);
-    activityStats.forEach((stat) => {
-      for (let hour = 0; hour < 24; hour++) {
-        const hourKey = hour.toString();
-        const count = stat.messageStats.hourlyActivity.get(hourKey) || 0;
-        hourlyData[hour] += count;
+    // Get hourly activity distribution
+    const hourlyActivity = new Map();
+    const weeklyActivity = new Map();
+
+    // Initialize hourly and weekly maps
+    for (let i = 0; i < 24; i++) {
+      hourlyActivity.set(i, 0);
+    }
+    for (let i = 0; i < 7; i++) {
+      weeklyActivity.set(i, 0);
+    }
+
+    // Aggregate activity data
+    memberActivity.forEach((member) => {
+      // Hourly message activity
+      if (
+        member.messageStats?.hourlyActivity &&
+        member.messageStats.hourlyActivity instanceof Map
+      ) {
+        member.messageStats.hourlyActivity.forEach((count, hour) => {
+          hourlyActivity.set(
+            parseInt(hour),
+            hourlyActivity.get(parseInt(hour)) + count,
+          );
+        });
+      }
+
+      // Weekly message activity
+      if (
+        member.messageStats?.weeklyActivity &&
+        member.messageStats.weeklyActivity instanceof Map
+      ) {
+        member.messageStats.weeklyActivity.forEach((count, day) => {
+          weeklyActivity.set(
+            parseInt(day),
+            weeklyActivity.get(parseInt(day)) + count,
+          );
+        });
       }
     });
 
-    if (hourlyData.some((count) => count > 0)) {
-      const hourLabels = Array.from(
-        { length: 24 },
-        (_, i) => `${i.toString().padStart(2, "0")}:00`
-      );
+    // Update embed with fields
+    embed
+      .setDescription(`Activity Statistics for ${interaction.guild.name}`)
+      .addFields([
+        {
+          name: "Message Activity",
+          value: `Total Messages: ${activityStats.totalMessages}\nUnique Authors: ${activityStats.messageAuthors}`,
+          inline: true,
+        },
+        {
+          name: "Voice Activity",
+          value: `Total Hours: ${Math.round(
+            activityStats.totalVoiceMinutes / 60,
+          )}\nUnique Users: ${activityStats.voiceUsers}`,
+          inline: true,
+        },
+        {
+          name: "Top Message Senders",
+          value:
+            topMessageFields.length > 0
+              ? topMessageFields.join("\n")
+              : "No data available",
+          inline: true,
+        },
+        {
+          name: "Top Voice Users",
+          value:
+            topVoiceFields.length > 0
+              ? topVoiceFields.join("\n")
+              : "No data available",
+          inline: true,
+        },
+      ]);
 
-      const hourlyChart = await generateLineChart(
-        hourLabels,
-        [
-          {
-            label: "Messages per Hour",
-            data: hourlyData,
-            fill: true,
-            borderColor: "#5865F2",
-            backgroundColor: "rgba(88, 101, 242, 0.2)",
-          },
-        ],
-        "24-Hour Activity Distribution"
-      );
-      files.push(
-        new AttachmentBuilder(hourlyChart, { name: "hourly_activity.png" })
-      );
+    // Generate activity score chart
+    const activityScores = memberActivity
+      .filter((m) => m.activityScore > 0)
+      .sort((a, b) => b.activityScore - a.activityScore)
+      .slice(0, 10);
+
+    if (activityScores.length === 0) {
+      return [];
     }
 
-    return files;
+    const usernames = await Promise.all(
+      activityScores.map(async (m) => {
+        try {
+          const member = await guild.members.fetch(m.userId).catch(() => null);
+          return member ? member.user.username.substring(0, 12) : "Unknown";
+        } catch {
+          return "Unknown";
+        }
+      }),
+    );
+
+    const chartData = {
+      labels: usernames,
+      datasets: [
+        {
+          data: activityScores.map((m) => m.activityScore),
+        },
+      ],
+    };
+
+    const chart = await generateBarChart(chartData, "Top User Activity Scores");
+    const attachment = new AttachmentBuilder(chart, {
+      name: "activity_scores.png",
+    });
+
+    return [attachment];
   } catch (error) {
     console.error("Error in handleActivity:", error);
     embed.setDescription(
-      `Error generating activity statistics for ${interaction.guild.name}`
+      `Error generating activity statistics for ${interaction.guild.name}`,
     );
     return [];
   }
@@ -483,105 +717,141 @@ async function handleActivity(interaction, embed, timeframe) {
 
 async function generateOverviewStats(guild, hours) {
   try {
-    const members = await guild.members.fetch();
+    // Get current server stats
     const currentStats = {
-      totalMembers: members.filter((m) => !m.user.bot).size,
-      onlineMembers: members.filter((m) => m.presence?.status === "online")
-        .size,
-      botCount: members.filter((m) => m.user.bot).size,
-      textChannels: guild.channels.cache.filter((c) => c.type === 0).size,
-      voiceChannels: guild.channels.cache.filter((c) => c.type === 2).size,
-      totalMessages: 0,
-      activeUsers: 0,
+      totalMembers: guild.memberCount,
+      botCount: guild.members.cache.filter((m) => m.user.bot).size,
+      onlineMembers: guild.members.cache.filter(
+        (m) => m.presence?.status === "online" || m.presence?.status === "idle",
+      ).size,
+      textChannels: guild.channels.cache.filter(
+        (c) =>
+          (c.type === 0 || c.type === 5 || c.type === 15) &&
+          !ignoredChannelIds.includes(c.id),
+      ).size,
+      voiceChannels: guild.channels.cache.filter(
+        (c) =>
+          (c.type === 2 || c.type === 13) && !ignoredChannelIds.includes(c.id),
+      ).size,
     };
 
+    // Query for activity data
     const query = { guildId: guild.id };
     if (hours) {
-      query.timestamp = { $gte: new Date(Date.now() - hours * 60 * 60 * 1000) };
+      query.timestamp = {
+        $gte: new Date(Date.now() - hours * 60 * 60 * 1000),
+      };
     }
 
-    const [snapshots, messageStats] = await Promise.all([
-      GuildSnapshot.find(query).sort({ timestamp: 1 }),
-      MemberActivity.aggregate([
-        { $match: { guildId: guild.id } },
-        {
-          $group: {
-            _id: null,
-            totalMessages: { $sum: "$messageStats.totalCount" },
-            activeUsers: {
-              $sum: { $cond: [{ $gt: ["$messageStats.totalCount", 0] }, 1, 0] },
-            },
-          },
-        },
-      ]),
-    ]);
+    // Find the latest snapshot for current data
+    const latestSnapshot = await GuildSnapshot.findOne({ guildId: guild.id })
+      .sort({ timestamp: -1 })
+      .lean();
 
-    currentStats.totalMessages = messageStats[0]?.totalMessages || 0;
-    currentStats.activeUsers = messageStats[0]?.activeUsers || 0;
-
-    let files = [];
-    if (snapshots.length > 0) {
-      // Only attempt to generate charts if we have snapshot data
-      files = await generateOverviewCharts(snapshots, currentStats);
+    if (latestSnapshot) {
+      currentStats.totalMessages = latestSnapshot.metrics?.messages?.total || 0;
+      currentStats.activeUsers = latestSnapshot.metrics?.members?.active || 0;
+    } else {
+      currentStats.totalMessages = 0;
+      currentStats.activeUsers = 0;
     }
 
-    return { currentStats, snapshots, files };
+    // Get trend data over time
+    const snapshots = await GuildSnapshot.find(query)
+      .sort({ timestamp: 1 })
+      .lean();
+
+    if (!snapshots || snapshots.length === 0) {
+      return { currentStats, trendData: null };
+    }
+
+    // Prepare trend data
+    const trendData = {
+      dates: [],
+      members: [],
+      messages: [],
+      voice: [],
+    };
+
+    // Process snapshots for trend
+    snapshots.forEach((snapshot) => {
+      // Format date (use day for long timeframes, time for short)
+      const date = new Date(snapshot.timestamp);
+      const formattedDate =
+        hours && hours <= 24
+          ? date.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          : date.toLocaleDateString();
+
+      trendData.dates.push(formattedDate);
+      trendData.members.push(snapshot.metrics?.members?.total || 0);
+      trendData.messages.push(snapshot.metrics?.messages?.total || 0);
+      trendData.voice.push(
+        Math.round((snapshot.metrics?.voice?.totalMinutes || 0) / 60),
+      ); // Convert to hours
+    });
+
+    return {
+      currentStats,
+      trendData,
+      files: await generateOverviewCharts(trendData),
+    };
   } catch (error) {
     console.error("Error generating overview stats:", error);
-    throw error;
+    return { currentStats: {}, trendData: null };
   }
 }
 
-// Export all handlers and utilities
+async function generateOverviewCharts(trendData) {
+  try {
+    if (!trendData || !trendData.dates || trendData.dates.length === 0) {
+      return [];
+    }
+
+    // Generate member and activity charts
+    const chartData = {
+      labels: trendData.dates,
+      datasets: [
+        {
+          label: "Members",
+          data: trendData.members,
+          borderColor: "rgba(75, 192, 192, 1)",
+          backgroundColor: "rgba(75, 192, 192, 0.2)",
+          yAxisID: "y",
+        },
+        {
+          label: "Messages",
+          data: trendData.messages,
+          borderColor: "rgba(255, 99, 132, 1)",
+          backgroundColor: "rgba(255, 99, 132, 0.2)",
+          yAxisID: "y1",
+        },
+        {
+          label: "Voice (hours)",
+          data: trendData.voice,
+          borderColor: "rgba(153, 102, 255, 1)",
+          backgroundColor: "rgba(153, 102, 255, 0.2)",
+          yAxisID: "y1",
+        },
+      ],
+    };
+
+    const chart = await generateLineChart(chartData, "Server Activity Trends");
+    const attachment = new AttachmentBuilder(chart, { name: "trend.png" });
+
+    return [attachment];
+  } catch (error) {
+    console.error("Error generating overview chart:", error);
+    return [];
+  }
+}
+
 export {
-  timeframes,
   handleOverview,
   handleMembers,
   handleActivity,
   handleChannels,
+  timeframes,
 };
-
-async function generateOverviewCharts(snapshots, stats) {
-  const files = [];
-
-  try {
-    // Generate member trend chart
-    const labels = snapshots.map((s) => {
-      const date = new Date(s.timestamp);
-      return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:00`;
-    });
-
-    if (labels.length > 0) {
-      const trendChart = await generateLineChart(
-        labels,
-        [
-          {
-            label: "Total Members",
-            data: snapshots.map((s) => s.metrics.members.total),
-          },
-        ],
-        "Member Count Trend"
-      );
-      files.push(new AttachmentBuilder(trendChart, { name: "trend.png" }));
-    }
-
-    // Generate activity distribution chart
-    if (stats.activeUsers > 0 || stats.totalMembers > 0) {
-      const activityChart = await generatePieChart(
-        ["Active Users", "Inactive Users"],
-        [
-          stats.activeUsers,
-          Math.max(0, stats.totalMembers - stats.activeUsers - stats.botCount),
-        ],
-        "Member Activity Distribution"
-      );
-      files.push(
-        new AttachmentBuilder(activityChart, { name: "activity.png" })
-      );
-    }
-  } catch (error) {
-    console.error("Error generating overview charts:", error);
-  }
-
-  return files;
-}

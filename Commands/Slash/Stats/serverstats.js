@@ -16,7 +16,7 @@ import {
 // Validate imports exist
 if (!handleOverview || !handleMembers || !handleActivity || !handleChannels) {
   throw new Error(
-    "Failed to import required handlers from statsViewHandlers.js"
+    "Failed to import required handlers from statsViewHandlers.js",
   );
 }
 import { LRUCache } from "lru-cache";
@@ -46,8 +46,8 @@ const getCommandData = () => ({
           { name: "Overview", value: "overview" },
           { name: "Members", value: "members" },
           { name: "Activity", value: "activity" },
-          { name: "Channels", value: "channels" }
-        )
+          { name: "Channels", value: "channels" },
+        ),
     )
     .addStringOption((option) =>
       option
@@ -58,8 +58,8 @@ const getCommandData = () => ({
           { name: "24 Hours", value: "1d" },
           { name: "7 Days", value: "7d" },
           { name: "30 Days", value: "30d" },
-          { name: "All Time", value: "all" }
-        )
+          { name: "All Time", value: "all" },
+        ),
     ),
 });
 
@@ -80,19 +80,48 @@ export default {
         return await interaction.editReply(cachedData);
       }
 
-      const embed = await generateEmbed({
-        client,
-        interaction,
-        view,
-        timeframe,
-      });
-      const files = await generateFiles({
-        interaction,
-        embed,
-        view,
-        timeframe,
-      });
-      const components = generateComponents(timeframe);
+      // Create embed base
+      const embed = new EmbedBuilder()
+        .setColor(client.config.embed.color)
+        .setTitle(
+          `Server Statistics - ${
+            view.charAt(0).toUpperCase() + view.slice(1)
+          } - ${timeframes[timeframe].label}`,
+        )
+        .setTimestamp();
+
+      // Get files and populate embed from handler
+      let files = [];
+      switch (view) {
+        case "overview":
+          files = await handleOverview(interaction, embed, timeframe);
+          break;
+        case "members":
+          files = await handleMembers(interaction, embed, timeframe);
+          break;
+        case "activity":
+          files = await handleActivity(interaction, embed, timeframe);
+          break;
+        case "channels":
+          files = await handleChannels(interaction, embed, timeframe);
+          break;
+      }
+
+      // Create UI components
+      const components = [
+        new ActionRowBuilder().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId("timeframe_select")
+            .setPlaceholder("Select Timeframe")
+            .addOptions(
+              Object.entries(timeframes).map(([value, data]) => ({
+                label: data.label,
+                value: value,
+                default: value === timeframe,
+              })),
+            ),
+        ),
+      ];
 
       const replyOptions = {
         embeds: [embed],
@@ -105,7 +134,7 @@ export default {
       await interaction.editReply(replyOptions);
     } catch (error) {
       console.error("Error in serverstats command:", error);
-      if (!interaction.deferred) {
+      if (!interaction.replied && !interaction.deferred) {
         await interaction.deferReply();
       }
       await interaction.editReply({
@@ -115,78 +144,3 @@ export default {
     }
   },
 };
-
-function generateComponents(timeframe) {
-  try {
-    return [
-      new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId("timeframe_select")
-          .setPlaceholder("Select Timeframe")
-          .addOptions(
-            Object.entries(timeframes).map(([value, data]) => ({
-              label: data.label,
-              value: value,
-              default: value === timeframe,
-            }))
-          )
-      ),
-    ];
-  } catch (error) {
-    console.error("Error generating components:", error);
-    throw error;
-  }
-}
-
-async function generateEmbed({ client, interaction, view, timeframe }) {
-  try {
-    return new EmbedBuilder()
-      .setColor(client.config.embed.color)
-      .setTitle(
-        `Server Statistics - ${
-          view.charAt(0).toUpperCase() + view.slice(1)
-        } - ${timeframes[timeframe].label}`
-      )
-      .setTimestamp();
-  } catch (error) {
-    console.error("Error generating embed:", error);
-    throw error;
-  }
-}
-
-async function generateFiles({ interaction, embed, view, timeframe }) {
-  try {
-    const files = [];
-
-    switch (view) {
-      case "overview":
-        files.push(...(await handleOverview(interaction, embed, timeframe)));
-        break;
-      case "members":
-        files.push(...(await handleMembers(interaction, embed, timeframe)));
-        break;
-      case "activity":
-        files.push(...(await handleActivity(interaction, embed, timeframe)));
-        break;
-      case "channels":
-        files.push(...(await handleChannels(interaction, embed, timeframe)));
-        break;
-    }
-
-    if (files.length > 0) {
-      const chartFileName = {
-        overview: "trend.png",
-        members: "member_trend.png",
-        activity: "activity_scores.png",
-        channels: "channel_stats.png",
-      }[view];
-
-      embed.setImage(`attachment://${chartFileName}`);
-    }
-
-    return files;
-  } catch (error) {
-    console.error("Error generating files:", error);
-    throw error;
-  }
-}
