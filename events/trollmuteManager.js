@@ -7,8 +7,35 @@ import trollmutedb from "../schema/trollmutedb.js";
 export default async (client) => {
   console.log("TrollMute Manager initialized");
 
-  // Check interval for trollmutes (every 5 seconds to be more responsive)
-  const CHECK_INTERVAL = 5000;
+  // Check interval for trollmutes (every 10 seconds)
+  const CHECK_INTERVAL = 10000;
+
+  // Track user activity during unmute periods
+  const userActivity = new Map();
+
+  // Listen for messages to track user activity
+  client.on("messageCreate", async (message) => {
+    try {
+      // Skip bot messages
+      if (message.author.bot) return;
+
+      const trollMute = await trollmutedb.findOne({
+        guild: message.guild?.id,
+        user: message.author.id,
+        active: true,
+        currentlyMuted: false, // Only track when they're unmuted
+      });
+
+      if (trollMute) {
+        // Update user activity
+        const key = `${message.guild.id}-${message.author.id}`;
+        userActivity.set(key, { lastSpoke: Date.now() });
+        console.log(`Updated activity for user ${message.author.tag}`);
+      }
+    } catch (error) {
+      console.error("Error tracking user activity:", error);
+    }
+  });
 
   // Function to manage trollmute cycles
   async function manageTrollMutes() {
@@ -22,18 +49,18 @@ export default async (client) => {
 
       for (const trollMute of activeTrollMutes) {
         // Debug log to track each trollmute being processed
-        console.log(
-          `Processing trollmute for user ${trollMute.user} in guild ${trollMute.guild}`
-        );
-        console.log(
-          `Current state: ${trollMute.currentlyMuted ? "Muted" : "Speaking"}`
-        );
-        console.log(
-          `Last cycle time: ${new Date(trollMute.lastCycleTime).toISOString()}`
-        );
-        console.log(
-          `Time since last cycle: ${now - trollMute.lastCycleTime}ms`
-        );
+        // console.log(
+        //   `Processing trollmute for user ${trollMute.user} in guild ${trollMute.guild}`
+        // );
+        // console.log(
+        //   `Current state: ${trollMute.currentlyMuted ? "Muted" : "Speaking"}`
+        // );
+        // console.log(
+        //   `Last cycle time: ${new Date(trollMute.lastCycleTime).toISOString()}`
+        // );
+        // console.log(
+        //   `Time since last cycle: ${now - trollMute.lastCycleTime}ms`
+        // );
 
         // Check if trollmute has expired based on total duration
         if (trollMute.expiresAt !== 0 && now > trollMute.expiresAt) {
@@ -87,9 +114,9 @@ export default async (client) => {
 
         // Check if user is currently muted in database
         if (trollMute.currentlyMuted) {
-          console.log(
-            `User ${member.user.tag} is in muted state, checking if it's time to unmute`
-          );
+          //   console.log(
+          //     `User ${member.user.tag} is in muted state, checking if it's time to unmute`
+          //   );
           // Check if mute duration has passed
           if (timeSinceLastCycle >= trollMute.muteDuration) {
             console.log(`Time to unmute user ${member.user.tag}`);
@@ -105,68 +132,53 @@ export default async (client) => {
               `Removed timeout for ${member.user.tag} for speaking window`
             );
 
+            // Clear previous activity data
+            const activityKey = `${guild.id}-${member.id}`;
+            userActivity.delete(activityKey);
+
             // Ping the user to let them know they can speak
             try {
-              // Try to get the channel where trollmute was activated
               const channel = guild.channels.cache.get(trollMute.channelId);
+              const targetChannel =
+                channel
+                  ?.permissionsFor(guild.members.me)
+                  ?.has("SendMessages") &&
+                channel?.permissionsFor(member)?.has("ViewChannel")
+                  ? channel
+                  : guild.channels.cache.find(
+                      (c) =>
+                        c.type === 0 &&
+                        c
+                          .permissionsFor(guild.members.me)
+                          ?.has("SendMessages") &&
+                        c.permissionsFor(member)?.has("ViewChannel")
+                    );
 
-              // If that channel is not accessible, fall back to finding an appropriate channel
-              if (
-                !channel ||
-                !channel.permissionsFor(guild.members.me).has("SendMessages") ||
-                !channel.permissionsFor(member).has("ViewChannel")
-              ) {
-                console.log(
-                  `Original channel not accessible, finding fallback channel`
-                );
-                // Fall back to finding an appropriate channel
-                const fallbackChannel = guild.channels.cache.find(
-                  (c) =>
-                    c.type === 0 && // Text channel
-                    c.permissionsFor(guild.members.me).has("SendMessages") &&
-                    c.permissionsFor(member).has("ViewChannel")
-                );
-
-                if (fallbackChannel) {
-                  await fallbackChannel.send({
-                    content: `<@${member.id}> You have ${
-                      trollMute.speakDuration / 1000
-                    } seconds to speak before being muted again!`,
-                    allowedMentions: { users: [member.id] },
-                  });
-                  console.log(
-                    `Sent notification in fallback channel ${fallbackChannel.name}`
-                  );
-                }
-              } else {
-                // Use the original channel where trollmute was activated
-                await channel.send({
+              if (targetChannel) {
+                await targetChannel.send({
                   content: `<@${member.id}> You have ${
                     trollMute.speakDuration / 1000
                   } seconds to speak before being muted again!`,
                   allowedMentions: { users: [member.id] },
                 });
                 console.log(
-                  `Sent notification in original channel ${channel.name}`
+                  `Sent unmute notification in ${targetChannel.name}`
                 );
               }
             } catch (error) {
-              console.error(
-                "Error pinging user for trollmute speaking window:",
-                error
-              );
+              console.error("Error sending unmute notification:", error);
             }
           } else {
-            console.log(
-              `Still ${
-                (trollMute.muteDuration - timeSinceLastCycle) / 1000
-              } seconds until unmute for ${member.user.tag}`
-            );
+            // console.log(
+            //   `Still ${
+            //     (trollMute.muteDuration - timeSinceLastCycle) / 1000
+            //   } seconds until unmute for ${member.user.tag}`
+            // );
           }
         } else {
-          console.log(
-            `User ${member.user.tag} is in speaking state, checking if it's time to re-mute`
-          );
+          //   console.log(
+          //     `User ${member.user.tag} is in speaking state, checking if it's time to re-mute`
+          //   );
           // User is in speaking window, check if speaking time is up
           if (timeSinceLastCycle >= trollMute.speakDuration) {
             console.log(`Time to re-mute user ${member.user.tag}`);
@@ -195,12 +207,21 @@ export default async (client) => {
                 channel &&
                 channel.permissionsFor(guild.members.me).has("SendMessages")
               ) {
-                await channel.send({
-                  content: `${member} has been muted again for ${
-                    trollMute.muteDuration / 1000
-                  } seconds.`,
-                  allowedMentions: { users: [] }, // Don't ping on this message
-                });
+                // Check if user was active during unmute period
+                const activityKey = `${guild.id}-${member.id}`;
+                const activity = userActivity.get(activityKey);
+
+                if (activity && activity.lastSpoke > trollMute.lastCycleTime) {
+                  await channel.send({
+                    content: `${member} has been muted again for ${
+                      trollMute.muteDuration / 1000
+                    } seconds.`,
+                    allowedMentions: { users: [] },
+                  });
+                }
+
+                // Clear activity data
+                userActivity.delete(activityKey);
                 console.log(
                   `Sent mute notification in channel ${channel.name}`
                 );
@@ -209,11 +230,11 @@ export default async (client) => {
               console.error("Error sending mute notification:", error);
             }
           } else {
-            console.log(
-              `Still ${
-                (trollMute.speakDuration - timeSinceLastCycle) / 1000
-              } seconds of speaking time for ${member.user.tag}`
-            );
+            // console.log(
+            //   `Still ${
+            //     (trollMute.speakDuration - timeSinceLastCycle) / 1000
+            //   } seconds of speaking time for ${member.user.tag}`
+            // );
           }
         }
       }
