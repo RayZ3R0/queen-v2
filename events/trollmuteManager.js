@@ -14,6 +14,10 @@ export default async (client) => {
   // Key format: "guildId-userId"
   const silentUsers = new Map();
 
+  // Map to track if this is the user's first cycle (always send notification for first unmute)
+  // Key format: "guildId-userId"
+  const firstCycleUsers = new Map();
+
   // Listen for messages to track user activity
   client.on("messageCreate", async (message) => {
     try {
@@ -52,9 +56,6 @@ export default async (client) => {
       const now = Date.now();
 
       for (const trollMute of activeTrollMutes) {
-        // Debug log to track each trollmute being processed (commented out to reduce noise)
-        // console.log(`Processing trollmute for user ${trollMute.user} in guild ${trollMute.guild}`);
-
         // Check if trollmute has expired based on total duration
         if (trollMute.expiresAt !== 0 && now > trollMute.expiresAt) {
           console.log(
@@ -122,40 +123,58 @@ export default async (client) => {
               `Removed timeout for ${member.user.tag} for speaking window`
             );
 
-            // Add to silent list - this marks that we've sent a notification but user hasn't spoken
-            silentUsers.set(userKey, true);
+            // IMPORTANT CHANGE: Only send unmute notification if:
+            // 1. This is their first cycle, OR
+            // 2. They spoke during their previous speaking window
+            const isFirstCycle = firstCycleUsers.has(userKey);
+            const spokeDuringLastWindow = !silentUsers.has(userKey);
 
-            // Send unmute notification
-            try {
-              const channel = guild.channels.cache.get(trollMute.channelId);
-              const targetChannel =
-                channel
-                  ?.permissionsFor(guild.members.me)
-                  ?.has("SendMessages") &&
-                channel?.permissionsFor(member)?.has("ViewChannel")
-                  ? channel
-                  : guild.channels.cache.find(
-                      (c) =>
-                        c.type === 0 &&
-                        c
-                          .permissionsFor(guild.members.me)
-                          ?.has("SendMessages") &&
-                        c.permissionsFor(member)?.has("ViewChannel")
-                    );
-
-              if (targetChannel) {
-                await targetChannel.send({
-                  content: `<@${member.id}> You have ${
-                    trollMute.speakDuration / 1000
-                  } seconds to speak before being muted again!`,
-                  allowedMentions: { users: [member.id] },
-                });
-                console.log(
-                  `Sent unmute notification in ${targetChannel.name}`
-                );
+            if (isFirstCycle || spokeDuringLastWindow) {
+              // If it's their first cycle, mark it as no longer their first cycle
+              if (isFirstCycle) {
+                firstCycleUsers.delete(userKey);
+                console.log(`First cycle completed for ${member.user.tag}`);
               }
-            } catch (error) {
-              console.error("Error sending unmute notification:", error);
+
+              // Add them to silent users for this new window
+              silentUsers.set(userKey, true);
+
+              // Send unmute notification
+              try {
+                const channel = guild.channels.cache.get(trollMute.channelId);
+                const targetChannel =
+                  channel
+                    ?.permissionsFor(guild.members.me)
+                    ?.has("SendMessages") &&
+                  channel?.permissionsFor(member)?.has("ViewChannel")
+                    ? channel
+                    : guild.channels.cache.find(
+                        (c) =>
+                          c.type === 0 &&
+                          c
+                            .permissionsFor(guild.members.me)
+                            ?.has("SendMessages") &&
+                          c.permissionsFor(member)?.has("ViewChannel")
+                      );
+
+                if (targetChannel) {
+                  await targetChannel.send({
+                    content: `<@${member.id}> You have ${
+                      trollMute.speakDuration / 1000
+                    } seconds to speak before being muted again!`,
+                    allowedMentions: { users: [member.id] },
+                  });
+                  console.log(
+                    `Sent unmute notification in ${targetChannel.name}`
+                  );
+                }
+              } catch (error) {
+                console.error("Error sending unmute notification:", error);
+              }
+            } else {
+              console.log(
+                `Skipping unmute notification for ${member.user.tag} as they didn't speak in their previous window`
+              );
             }
           }
         }
@@ -205,9 +224,10 @@ export default async (client) => {
                   console.log(
                     `User ${member.user.tag} didn't speak during their window, skipping mute notification`
                   );
-                  // Remove from silent users map as we're starting a new cycle
-                  silentUsers.delete(userKey);
                 }
+
+                // Remove from silent users map as we're starting a new cycle
+                // Note: We don't reset it if they didn't speak, as we use that state for the next unmute decision
               }
             } catch (error) {
               console.error("Error sending mute notification:", error);
@@ -226,10 +246,21 @@ export default async (client) => {
   // Store the interval ID so it can be cleared if needed
   client.trollMuteInterval = intervalId;
 
-  // Run once immediately
-  manageTrollMutes().catch((err) =>
-    console.error("Error in initial trollmute check:", err)
-  );
+  // Run once immediately - and mark all users as being in their first cycle
+  try {
+    const activeTrollMutes = await trollmutedb.find({ active: true });
+    for (const trollMute of activeTrollMutes) {
+      const userKey = `${trollMute.guild}-${trollMute.user}`;
+      firstCycleUsers.set(userKey, true);
+      console.log(
+        `Marked ${trollMute.user} in guild ${trollMute.guild} as in first cycle`
+      );
+    }
+
+    await manageTrollMutes();
+  } catch (err) {
+    console.error("Error in initial trollmute check:", err);
+  }
 
   console.log(
     `TrollMute cycle checker running every ${CHECK_INTERVAL / 1000} seconds`
@@ -248,6 +279,10 @@ export default async (client) => {
         console.log(
           `User ${member.user.tag} rejoined with an active trollmute`
         );
+        // Mark as first cycle when they rejoin
+        const userKey = `${member.guild.id}-${member.id}`;
+        firstCycleUsers.set(userKey, true);
+
         // If they were in a muted state when they left, re-apply timeout
         if (activeTrollMute.currentlyMuted) {
           await member.timeout(
@@ -260,5 +295,14 @@ export default async (client) => {
     } catch (error) {
       console.error("Error checking rejoining member for trollmute:", error);
     }
+  });
+
+  // When a new trollmute is created, mark it as first cycle
+  client.on("trollmuteCreated", (guildId, userId) => {
+    const userKey = `${guildId}-${userId}`;
+    firstCycleUsers.set(userKey, true);
+    console.log(
+      `Marked new trollmute for ${userId} in guild ${guildId} as in first cycle`
+    );
   });
 };
