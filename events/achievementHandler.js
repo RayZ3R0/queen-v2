@@ -1,5 +1,4 @@
 import { handleAchievements } from "../utils/spirits/achievementManager.js";
-import { Logger } from "../utils/Logger.js";
 
 export default async (client) => {
   // Listen for profile updates that might trigger achievements
@@ -19,7 +18,7 @@ export default async (client) => {
       }
 
       // Log achievement unlocks
-      Logger.info(
+      console.log(
         `User ${userId} unlocked ${result.unlockMessages.length} achievements`
       );
 
@@ -29,7 +28,7 @@ export default async (client) => {
       }
     } catch (error) {
       console.error("Error in achievement handler:", error);
-      Logger.error(`Achievement processing error for user ${userId}:`, error);
+      console.error(`Achievement processing error for user ${userId}:`, error);
     }
   });
 
@@ -111,7 +110,7 @@ export default async (client) => {
         }
 
         // Log achievement unlocks
-        Logger.info(
+        console.log(
           `User ${userId} unlocked ${result.unlockMessages.length} achievements from ${event.name}`
         );
       } catch (error) {
@@ -119,7 +118,7 @@ export default async (client) => {
           `Error processing ${event.name} achievements for user ${userId}:`,
           error
         );
-        Logger.error(
+        console.error(
           `Achievement event ${event.name} error for user ${userId}:`,
           error
         );
@@ -141,12 +140,12 @@ export default async (client) => {
         }
       );
 
-      Logger.info("Reset seasonal achievement progress");
+      console.log("Reset seasonal achievement progress");
     } catch (error) {
       console.error("Error resetting seasonal achievements:", error);
-      Logger.error("Season reset achievement error:", error);
+      console.error("Season reset achievement error:", error);
     }
   });
 
-  Logger.info("Achievement handler initialized");
+  console.log("Achievement handler initialized");
 };

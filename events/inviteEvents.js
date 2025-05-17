@@ -1,6 +1,5 @@
 import InviteManager from "../utils/inviteManager.js";
 import { Events } from "discord.js";
-import { Logger } from "../utils/Logger.js";
 
 // Export event config for main ready event
 export const name = Events.ClientReady;
@@ -10,7 +9,7 @@ export default async (client) => {
   try {
     // Initialize invite manager
     client.inviteManager = new InviteManager(client);
-    Logger.info("Initializing invite tracking system...");
+    console.log("Initializing invite tracking system...");
 
     // Cache initial invites
     for (const guild of client.guilds.cache.values()) {
@@ -21,7 +20,7 @@ export default async (client) => {
     client.on(Events.InviteCreate, async (invite) => {
       try {
         await client.inviteManager.cacheGuildInvites(invite.guild);
-        Logger.debug(
+        console.log(
           `Cached invites after new invite created in ${invite.guild.name}`
         );
       } catch (error) {
@@ -32,7 +31,7 @@ export default async (client) => {
     client.on(Events.InviteDelete, async (invite) => {
       try {
         await client.inviteManager.cacheGuildInvites(invite.guild);
-        Logger.debug(
+        console.log(
           `Cached invites after invite deleted in ${invite.guild.name}`
         );
       } catch (error) {
@@ -43,7 +42,7 @@ export default async (client) => {
     client.on(Events.GuildMemberAdd, async (member) => {
       try {
         await client.inviteManager.handleMemberJoin(member);
-        Logger.debug(
+        console.log(
           `Processed join for ${member.user.tag} in ${member.guild.name}`
         );
       } catch (error) {
@@ -54,7 +53,7 @@ export default async (client) => {
     client.on(Events.GuildMemberRemove, async (member) => {
       try {
         await client.inviteManager.handleMemberLeave(member);
-        Logger.debug(
+        console.log(
           `Processed leave for ${member.user.tag} in ${member.guild.name}`
         );
       } catch (error) {
@@ -62,8 +61,8 @@ export default async (client) => {
       }
     });
 
-    Logger.info("Invite tracking system fully initialized");
+    console.log("Invite tracking system fully initialized");
   } catch (error) {
-    Logger.error("Failed to initialize invite tracking system:", error);
+    console.error("Failed to initialize invite tracking system:", error);
   }
 };

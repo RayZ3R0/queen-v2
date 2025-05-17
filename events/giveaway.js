@@ -1,5 +1,4 @@
 import { EmbedBuilder } from "discord.js";
-import { Logger } from "../utils/Logger.js";
 import Giveaway from "../schema/giveaway.js";
 import { client } from "../bot.js";
 
@@ -10,7 +9,7 @@ export default async (client) => {
   try {
     // Find all active giveaways
     const activeGiveaways = await Giveaway.find({ status: "ACTIVE" });
-    Logger.info(`Found ${activeGiveaways.length} active giveaways on startup`);
+    console.log(`Found ${activeGiveaways.length} active giveaways on startup`);
 
     // Process each active giveaway
     for (const giveaway of activeGiveaways) {
@@ -19,8 +18,8 @@ export default async (client) => {
 
         // If giveaway should have ended while bot was offline
         if (remainingTime <= 0) {
-          Logger.info(
-            `Processing missed giveaway end: ${giveaway.prize} (ID: ${giveaway._id})`,
+          console.log(
+            `Processing missed giveaway end: ${giveaway.prize} (ID: ${giveaway._id})`
           );
           await handleGiveawayEnd(giveaway);
           continue;
@@ -61,29 +60,31 @@ export default async (client) => {
 
                 const updatedEmbed = await createGiveawayEmbed(
                   currentGiveaway,
-                  remaining,
+                  remaining
                 );
 
                 await message.edit({
                   embeds: [updatedEmbed],
                 });
               } catch (error) {
-                Logger.error("Error updating giveaway:", error);
+                console.error("Error updating giveaway:", error);
                 clearInterval(intervalId);
               }
             }, 60000); // Update every minute
           }
         }
 
-        Logger.info(
-          `Scheduled giveaway end for: ${giveaway.prize} (Ends in: ${Math.floor(remainingTime / 1000 / 60)} minutes)`,
+        console.log(
+          `Scheduled giveaway end for: ${giveaway.prize} (Ends in: ${Math.floor(
+            remainingTime / 1000 / 60
+          )} minutes)`
         );
       } catch (error) {
-        Logger.error(`Error processing giveaway ${giveaway._id}:`, error);
+        console.error(`Error processing giveaway ${giveaway._id}:`, error);
       }
     }
   } catch (error) {
-    Logger.error("Error loading active giveaways:", error);
+    console.error("Error loading active giveaways:", error);
   }
 };
 
@@ -122,7 +123,7 @@ async function createGiveawayEmbed(giveaway, remaining) {
         `**Winners:** ${giveaway.winnerCount}\n` +
         `**Ends:** <t:${Math.floor(giveaway.endTime / 1000)}:R>\n` +
         `**Entries:** ${giveaway.participants.length}${roleText}\n\n` +
-        `${timeBar} ${timeRemaining}`,
+        `${timeBar} ${timeRemaining}`
     )
     .setColor(statusColor)
     .setFooter({
@@ -150,8 +151,8 @@ async function handleGiveawayEnd(giveaway) {
       .fetch(giveaway.channelId)
       .catch(() => null);
     if (!channel) {
-      Logger.warn(
-        `Could not find channel ${giveaway.channelId} for giveaway ${giveaway._id}`,
+      console.warn(
+        `Could not find channel ${giveaway.channelId} for giveaway ${giveaway._id}`
       );
       return;
     }
@@ -173,7 +174,7 @@ async function handleGiveawayEnd(giveaway) {
         `${giveaway.description ? `${giveaway.description}\n\n` : ""}` +
           `**Winners:** ${winnerMentions}\n` +
           `**Host:** <@${giveaway.creatorId}>\n` +
-          `**Entries:** ${giveaway.participants.length}`,
+          `**Entries:** ${giveaway.participants.length}`
       );
 
       // Send winner announcement
@@ -184,22 +185,22 @@ async function handleGiveawayEnd(giveaway) {
             new EmbedBuilder()
               .setTitle("🎊 Giveaway Ended")
               .setDescription(
-                `**Prize:** ${giveaway.prize}\n**Winners:** ${winnerMentions}`,
+                `**Prize:** ${giveaway.prize}\n**Winners:** ${winnerMentions}`
               )
               .setColor("#FFD700"),
           ],
         })
         .catch(() =>
-          Logger.warn(
-            `Could not send winner announcement for giveaway ${giveaway._id}`,
-          ),
+          console.warn(
+            `Could not send winner announcement for giveaway ${giveaway._id}`
+          )
         );
     } else {
       endedEmbed.setDescription(
         `${giveaway.description ? `${giveaway.description}\n\n` : ""}` +
           "**Winners:** None (not enough participants)\n" +
           `**Host:** <@${giveaway.creatorId}>\n` +
-          `**Entries:** ${giveaway.participants.length}`,
+          `**Entries:** ${giveaway.participants.length}`
       );
     }
 
@@ -211,11 +212,11 @@ async function handleGiveawayEnd(giveaway) {
           components: [],
         })
         .catch(() =>
-          Logger.warn(`Could not update giveaway message for ${giveaway._id}`),
+          console.warn(`Could not update giveaway message for ${giveaway._id}`)
         );
     }
   } catch (error) {
-    Logger.error(`Error ending giveaway ${giveaway._id}:`, error);
+    console.error(`Error ending giveaway ${giveaway._id}:`, error);
   }
 }
 

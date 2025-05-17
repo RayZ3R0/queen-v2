@@ -1,7 +1,6 @@
 import { ActivityType } from "discord.js";
 import { runSystemChecks } from "../utils/spirits/systemCheck.js";
 import { SPIRIT_POWERS } from "../utils/spirits/spiritPowers.js";
-import { Logger } from "../utils/Logger.js";
 import pkg from "@napi-rs/canvas";
 const { GlobalFonts } = pkg;
 import { client } from "../bot.js";
@@ -10,7 +9,7 @@ export default async (client) => {
   try {
     // Log startup info
     console.log(`[Ready] Logged in as ${client.user.tag}`);
-    Logger.info(`Bot is ready! Logged in as ${client.user.tag}`);
+    console.log(`Bot is ready! Logged in as ${client.user.tag}`);
 
     // Set initial status
     client.user.setActivity("/start | Begin your spirit journey", {
@@ -19,7 +18,7 @@ export default async (client) => {
 
     // Load spirit configurations
     const totalPowers = Object.keys(SPIRIT_POWERS).length;
-    Logger.info(`Loaded ${totalPowers} spirit powers`);
+    console.log(`Loaded ${totalPowers} spirit powers`);
 
     // Run system diagnostics
     const results = await runSystemChecks();
@@ -56,16 +55,16 @@ export default async (client) => {
     const healthPercentage = Math.floor((passedChecks / totalChecks) * 100);
 
     // Log system health
-    Logger.info(`System Health: ${healthPercentage}% operational`);
+    console.log(`System Health: ${healthPercentage}% operational`);
 
     // If health below 75%, log warning with details
     if (healthPercentage < 75) {
-      Logger.warn("System health below optimal levels! Failed checks:");
+      console.warn("System health below optimal levels! Failed checks:");
       Object.entries(results).forEach(([category, checks]) => {
         Object.entries(checks)
           .filter(([, check]) => check.status !== "✅")
           .forEach(([name, check]) => {
-            Logger.warn(`${category} > ${name}: ${check.message}`);
+            console.warn(`${category} > ${name}: ${check.message}`);
           });
       });
     }
@@ -80,7 +79,7 @@ export default async (client) => {
     setTimeout(() => {
       setInterval(async () => {
         const dailyResults = await runSystemChecks();
-        Logger.info("Daily system check completed");
+        console.log("Daily system check completed");
 
         // Alert devs if health drops below 90%
         const dailyHealth = Math.floor(
@@ -119,10 +118,10 @@ export default async (client) => {
       }, 24 * 60 * 60 * 1000); // Run every 24 hours
     }, tomorrow - now);
 
-    Logger.info("Bot initialization complete!");
+    console.log("Bot initialization complete!");
   } catch (error) {
     console.error("[Ready] Error during startup:", error);
-    Logger.error("Error during bot startup:", error);
+    console.error("Error during bot startup:", error);
   }
 };
 
