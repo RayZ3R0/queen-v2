@@ -110,8 +110,32 @@ async function manageTrollMutes() {
           trollMute.lastCycleTime = now;
           await trollMute.save();
 
-          // Apply timeout
-          await member.timeout(trollMute.muteDuration, "TrollMute cycle");
+          // Apply timeout - but we need to make sure it's not longer than Discord's maximum (28 days)
+          const timeoutDuration = Math.min(trollMute.muteDuration, 2419200000); // 28 days in ms
+          await member.timeout(timeoutDuration, "TrollMute cycle");
+
+          // Log the mute action (optional)
+          console.log(
+            `Re-muted ${member.user.tag} in ${guild.name} for trollmute cycle`
+          );
+
+          // Optionally notify a channel that the user has been muted again
+          try {
+            const channel = guild.channels.cache.get(trollMute.channelId);
+            if (
+              channel &&
+              channel.permissionsFor(guild.members.me).has("SendMessages")
+            ) {
+              await channel.send({
+                content: `${member} has been muted again for ${
+                  trollMute.muteDuration / 1000
+                } seconds.`,
+                allowedMentions: { users: [] }, // Don't ping on this message
+              });
+            }
+          } catch (error) {
+            console.error("Error sending mute notification:", error);
+          }
         }
       }
     }
@@ -124,4 +148,33 @@ async function manageTrollMutes() {
 client.once("ready", () => {
   console.log("TrollMute Manager initialized");
   setInterval(manageTrollMutes, CHECK_INTERVAL);
+
+  // To ensure we don't miss any trollmutes when the bot restarts,
+  // run the check once immediately
+  manageTrollMutes().catch((err) =>
+    console.error("Error in initial trollmute check:", err)
+  );
+});
+
+// Optionally add an event listener for when members join to check if they have active trollmutes
+client.on("guildMemberAdd", async (member) => {
+  try {
+    const activeTrollMute = await trollmutedb.findOne({
+      guild: member.guild.id,
+      user: member.id,
+      active: true,
+    });
+
+    if (activeTrollMute) {
+      // If they were in a muted state when they left, re-apply timeout
+      if (activeTrollMute.currentlyMuted) {
+        await member.timeout(
+          activeTrollMute.muteDuration,
+          "TrollMute reapplied after rejoin"
+        );
+      }
+    }
+  } catch (error) {
+    console.error("Error checking rejoining member for trollmute:", error);
+  }
 });
