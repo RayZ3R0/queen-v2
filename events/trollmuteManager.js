@@ -10,7 +10,8 @@ export default async (client) => {
   // Check interval for trollmutes (every 10 seconds)
   const CHECK_INTERVAL = 10000;
 
-  // Track users who haven't spoken after being notified
+  // Map to track users who haven't spoken after being notified
+  // Key format: "guildId-userId"
   const silentUsers = new Map();
 
   // Listen for messages to track user activity
@@ -19,6 +20,7 @@ export default async (client) => {
       // Skip bot messages
       if (message.author.bot) return;
 
+      // Only process messages from users in unmuted speaking window
       const trollMute = await trollmutedb.findOne({
         guild: message.guild?.id,
         user: message.author.id,
@@ -29,6 +31,7 @@ export default async (client) => {
       if (trollMute) {
         const userKey = `${message.guild.id}-${message.author.id}`;
         if (silentUsers.has(userKey)) {
+          // User has broken their silence, remove from silent list
           silentUsers.delete(userKey);
           console.log(`User ${message.author.tag} has broken their silence`);
         }
@@ -49,19 +52,8 @@ export default async (client) => {
       const now = Date.now();
 
       for (const trollMute of activeTrollMutes) {
-        // Debug log to track each trollmute being processed
-        // console.log(
-        //   `Processing trollmute for user ${trollMute.user} in guild ${trollMute.guild}`
-        // );
-        // console.log(
-        //   `Current state: ${trollMute.currentlyMuted ? "Muted" : "Speaking"}`
-        // );
-        // console.log(
-        //   `Last cycle time: ${new Date(trollMute.lastCycleTime).toISOString()}`
-        // );
-        // console.log(
-        //   `Time since last cycle: ${now - trollMute.lastCycleTime}ms`
-        // );
+        // Debug log to track each trollmute being processed (commented out to reduce noise)
+        // console.log(`Processing trollmute for user ${trollMute.user} in guild ${trollMute.guild}`);
 
         // Check if trollmute has expired based on total duration
         if (trollMute.expiresAt !== 0 && now > trollMute.expiresAt) {
@@ -112,13 +104,10 @@ export default async (client) => {
         }
 
         const timeSinceLastCycle = now - trollMute.lastCycleTime;
+        const userKey = `${guild.id}-${member.id}`;
 
-        // Check if user is currently muted in database
+        // User is currently muted, check if it's time to unmute
         if (trollMute.currentlyMuted) {
-          //   console.log(
-          //     `User ${member.user.tag} is in muted state, checking if it's time to unmute`
-          //   );
-          // Check if mute duration has passed
           if (timeSinceLastCycle >= trollMute.muteDuration) {
             console.log(`Time to unmute user ${member.user.tag}`);
 
@@ -133,8 +122,7 @@ export default async (client) => {
               `Removed timeout for ${member.user.tag} for speaking window`
             );
 
-            // Add to silent list and send initial unmute notification
-            const userKey = `${guild.id}-${member.id}`;
+            // Add to silent list - this marks that we've sent a notification but user hasn't spoken
             silentUsers.set(userKey, true);
 
             // Send unmute notification
@@ -169,18 +157,10 @@ export default async (client) => {
             } catch (error) {
               console.error("Error sending unmute notification:", error);
             }
-          } else {
-            // console.log(
-            //   `Still ${
-            //     (trollMute.muteDuration - timeSinceLastCycle) / 1000
-            //   } seconds until unmute for ${member.user.tag}`
-            // );
           }
-        } else {
-          //   console.log(
-          //     `User ${member.user.tag} is in speaking state, checking if it's time to re-mute`
-          //   );
-          // User is in speaking window, check if speaking time is up
+        }
+        // User is in speaking window, check if it's time to re-mute
+        else {
           if (timeSinceLastCycle >= trollMute.speakDuration) {
             console.log(`Time to re-mute user ${member.user.tag}`);
 
@@ -201,39 +181,37 @@ export default async (client) => {
               }`
             );
 
-            // Notify the channel that the user has been muted again
+            // Only send a mute notification if the user actually spoke during their window
             try {
               const channel = guild.channels.cache.get(trollMute.channelId);
               if (
                 channel &&
                 channel.permissionsFor(guild.members.me).has("SendMessages")
               ) {
-                const userKey = `${guild.id}-${member.id}`;
-                // Only send mute message if user isn't in silent list
+                // Check if user is in silent list (didn't speak during their window)
                 if (!silentUsers.has(userKey)) {
+                  // User spoke during their window, so send a notification
                   await channel.send({
                     content: `${member} has been muted again for ${
                       trollMute.muteDuration / 1000
                     } seconds.`,
                     allowedMentions: { users: [] },
                   });
+                  console.log(
+                    `Sent mute notification in channel ${channel.name}`
+                  );
+                } else {
+                  // User didn't speak, don't send a notification
+                  console.log(
+                    `User ${member.user.tag} didn't speak during their window, skipping mute notification`
+                  );
+                  // Remove from silent users map as we're starting a new cycle
+                  silentUsers.delete(userKey);
                 }
-
-                // Clear from silent list when cycle ends
-                silentUsers.delete(userKey);
-                console.log(
-                  `Sent mute notification in channel ${channel.name}`
-                );
               }
             } catch (error) {
               console.error("Error sending mute notification:", error);
             }
-          } else {
-            // console.log(
-            //   `Still ${
-            //     (trollMute.speakDuration - timeSinceLastCycle) / 1000
-            //   } seconds of speaking time for ${member.user.tag}`
-            // );
           }
         }
       }
@@ -283,6 +261,4 @@ export default async (client) => {
       console.error("Error checking rejoining member for trollmute:", error);
     }
   });
-
-  // No need for the SIGINT handler here - it should be handled by your main process
 };
