@@ -10,8 +10,8 @@ export default async (client) => {
   // Check interval for trollmutes (every 10 seconds)
   const CHECK_INTERVAL = 10000;
 
-  // Track user activity during unmute periods
-  const userActivity = new Map();
+  // Track users who haven't spoken after being notified
+  const silentUsers = new Map();
 
   // Listen for messages to track user activity
   client.on("messageCreate", async (message) => {
@@ -27,10 +27,11 @@ export default async (client) => {
       });
 
       if (trollMute) {
-        // Update user activity
-        const key = `${message.guild.id}-${message.author.id}`;
-        userActivity.set(key, { lastSpoke: Date.now() });
-        console.log(`Updated activity for user ${message.author.tag}`);
+        const userKey = `${message.guild.id}-${message.author.id}`;
+        if (silentUsers.has(userKey)) {
+          silentUsers.delete(userKey);
+          console.log(`User ${message.author.tag} has broken their silence`);
+        }
       }
     } catch (error) {
       console.error("Error tracking user activity:", error);
@@ -132,11 +133,11 @@ export default async (client) => {
               `Removed timeout for ${member.user.tag} for speaking window`
             );
 
-            // Clear previous activity data
-            const activityKey = `${guild.id}-${member.id}`;
-            userActivity.delete(activityKey);
+            // Add to silent list and send initial unmute notification
+            const userKey = `${guild.id}-${member.id}`;
+            silentUsers.set(userKey, true);
 
-            // Ping the user to let them know they can speak
+            // Send unmute notification
             try {
               const channel = guild.channels.cache.get(trollMute.channelId);
               const targetChannel =
@@ -207,11 +208,9 @@ export default async (client) => {
                 channel &&
                 channel.permissionsFor(guild.members.me).has("SendMessages")
               ) {
-                // Check if user was active during unmute period
-                const activityKey = `${guild.id}-${member.id}`;
-                const activity = userActivity.get(activityKey);
-
-                if (activity && activity.lastSpoke > trollMute.lastCycleTime) {
+                const userKey = `${guild.id}-${member.id}`;
+                // Only send mute message if user isn't in silent list
+                if (!silentUsers.has(userKey)) {
                   await channel.send({
                     content: `${member} has been muted again for ${
                       trollMute.muteDuration / 1000
@@ -220,8 +219,8 @@ export default async (client) => {
                   });
                 }
 
-                // Clear activity data
-                userActivity.delete(activityKey);
+                // Clear from silent list when cycle ends
+                silentUsers.delete(userKey);
                 console.log(
                   `Sent mute notification in channel ${channel.name}`
                 );
