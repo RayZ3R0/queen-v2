@@ -161,7 +161,7 @@ export default async (client) => {
                   await targetChannel.send({
                     content: `<@${member.id}> You have ${
                       trollMute.speakDuration / 1000
-                    } seconds to speak before being muted again!`,
+                    } seconds to speak before being sent to the shadow realm again!`,
                     allowedMentions: { users: [member.id] },
                   });
                   console.log(
@@ -210,12 +210,12 @@ export default async (client) => {
                 // Check if user is in silent list (didn't speak during their window)
                 if (!silentUsers.has(userKey)) {
                   // User spoke during their window, so send a notification
-                  await channel.send({
-                    content: `${member} has been muted again for ${
-                      trollMute.muteDuration / 1000
-                    } seconds.`,
-                    allowedMentions: { users: [] },
-                  });
+                  // await channel.send({
+                  //   content: `${member} has been muted again for ${
+                  //     trollMute.muteDuration / 1000
+                  //   } seconds.`,
+                  //   allowedMentions: { users: [] },
+                  // });
                   console.log(
                     `Sent mute notification in channel ${channel.name}`
                   );
