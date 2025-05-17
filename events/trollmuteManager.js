@@ -206,8 +206,8 @@ async function manageTrollMutes() {
   }
 }
 
-// Initialize the interval when the bot starts
-client.once("ready", () => {
+// Initialize the trollmute manager when the client is ready
+client.on("ready", () => {
   console.log("TrollMute Manager initialized");
 
   // Set up the interval
