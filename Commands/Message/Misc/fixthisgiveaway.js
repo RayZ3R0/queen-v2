@@ -20,8 +20,8 @@ export default {
   run: async ({ client, message, prefix }) => {
     try {
       // This is hardcoded for the specific giveaway
-      const giveawayId = "6822227db347a2e2ed248424";
-      const messageId = "1371525315981217835";
+      const giveawayId = "6845aed27045483efb2a7bdb";
+      const messageId = "1381296723984384181";
       const channelId = "981108841452277770";
 
       // Find the giveaway in database
@@ -32,9 +32,11 @@ export default {
           embeds: [
             new EmbedBuilder()
               .setTitle("❌ Giveaway Not Found or Not Active")
-              .setDescription("Could not find the active Discord Nitro giveaway.")
-              .setColor("Red")
-          ]
+              .setDescription(
+                "Could not find the active Discord Nitro giveaway."
+              )
+              .setColor("Red"),
+          ],
         });
       }
 
@@ -66,7 +68,9 @@ export default {
         const emptyChar = "▱";
         const filledChar = "▰";
 
-        const bar = filledChar.repeat(filledLength) + emptyChar.repeat(barLength - filledLength);
+        const bar =
+          filledChar.repeat(filledLength) +
+          emptyChar.repeat(barLength - filledLength);
         return bar;
       };
 
@@ -101,7 +105,7 @@ export default {
               `**Winners:** ${giveaway.winnerCount}\n` +
               `**Ends:** <t:${Math.floor(giveaway.endTime / 1000)}:R>\n` +
               `**Entries:** ${giveaway.participants.length}${roleText}\n\n` +
-              `${timeBar} ${timeRemaining}`,
+              `${timeBar} ${timeRemaining}`
           )
           .setColor(statusColor)
           .setThumbnail(message.guild.iconURL({ dynamic: true }))
@@ -139,7 +143,7 @@ export default {
       // Update the message with fresh components
       await giveawayMessage.edit({
         embeds: [updatedEmbed],
-        components: [row]
+        components: [row],
       });
 
       // Set up a new collector for the buttons
@@ -205,7 +209,9 @@ export default {
             }
 
             // Update the embed
-            const updatedGiveaway = await Giveaway.findById(currentGiveaway._id);
+            const updatedGiveaway = await Giveaway.findById(
+              currentGiveaway._id
+            );
             const remaining = getTimeRemaining(updatedGiveaway.endTime);
             const updatedEmbed = await createGiveawayEmbed(
               updatedGiveaway,
@@ -214,7 +220,7 @@ export default {
 
             await giveawayMessage.edit({
               embeds: [updatedEmbed],
-              components: [row]
+              components: [row],
             });
             break;
           }
@@ -247,7 +253,9 @@ export default {
             const firstChunk = participantsChunks[0];
 
             await interaction.reply({
-              content: `**Participants (${currentGiveaway.participants.length}):** ${firstChunk}${
+              content: `**Participants (${
+                currentGiveaway.participants.length
+              }):** ${firstChunk}${
                 participantsChunks.length > 1
                   ? "\n\n*Too many participants to display all at once.*"
                   : ""
@@ -285,7 +293,7 @@ export default {
 
           await giveawayMessage.edit({
             embeds: [updatedEmbed],
-            components: [row]
+            components: [row],
           });
         } catch (error) {
           console.error("Error updating giveaway:", error);
@@ -297,9 +305,11 @@ export default {
         embeds: [
           new EmbedBuilder()
             .setTitle("✅ Discord Nitro Giveaway Fixed")
-            .setDescription("The Discord Nitro giveaway button interactions have been restored!")
-            .setColor("Green")
-        ]
+            .setDescription(
+              "The Discord Nitro giveaway button interactions have been restored!"
+            )
+            .setColor("Green"),
+        ],
       });
     } catch (error) {
       console.error("Error fixing giveaway:", error);
@@ -307,10 +317,12 @@ export default {
         embeds: [
           new EmbedBuilder()
             .setTitle("❌ Error")
-            .setDescription(`An error occurred while fixing the giveaway: ${error.message}`)
-            .setColor("Red")
-        ]
+            .setDescription(
+              `An error occurred while fixing the giveaway: ${error.message}`
+            )
+            .setColor("Red"),
+        ],
       });
     }
-  }
+  },
 };
