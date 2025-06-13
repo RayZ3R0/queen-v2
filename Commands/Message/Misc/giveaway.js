@@ -7,6 +7,7 @@ import {
   ComponentType,
 } from "discord.js";
 import Giveaway from "../../../schema/giveaway.js";
+import { setupGiveawayInteractions } from "../../../events/giveaway.js";
 import ms from "ms";
 
 /**
@@ -105,7 +106,7 @@ export default {
             `**Winners:** ${giveaway.winnerCount}\n` +
             `**Ends:** <t:${Math.floor(giveaway.endTime / 1000)}:R>\n` +
             `**Entries:** ${giveaway.participants.length}${roleText}\n\n` +
-            `${timeBar} ${timeRemaining}`,
+            `${timeBar} ${timeRemaining}`
         )
         .setColor(statusColor)
         .setThumbnail(message.guild.iconURL({ dynamic: true }))
@@ -134,7 +135,7 @@ export default {
 
 • \`${prefix}giveaway cancel <messageID>\` - Cancel a giveaway
   Example: \`${prefix}giveaway cancel 123456789012345678\``,
-        "#FF73FA",
+        "#FF73FA"
       );
       return message.channel.send({ embeds: [helpEmbed] });
     }
@@ -151,7 +152,7 @@ export default {
                 createEmbed(
                   "❌ Missing Arguments",
                   `Please provide all required arguments.\nUsage: \`${prefix}giveaway create <duration> <winners> <prize>\``,
-                  "Red",
+                  "Red"
                 ),
               ],
             });
@@ -164,7 +165,7 @@ export default {
                 createEmbed(
                   "❌ Invalid Duration",
                   "Please provide a valid duration (e.g., 1d, 12h, 30m).",
-                  "Red",
+                  "Red"
                 ),
               ],
             });
@@ -176,7 +177,7 @@ export default {
                 createEmbed(
                   "❌ Invalid Duration",
                   "Duration must be between 30 seconds and 30 days.",
-                  "Red",
+                  "Red"
                 ),
               ],
             });
@@ -189,7 +190,7 @@ export default {
                 createEmbed(
                   "❌ Invalid Winner Count",
                   "Winner count must be between 1 and 20.",
-                  "Red",
+                  "Red"
                 ),
               ],
             });
@@ -202,7 +203,7 @@ export default {
                 createEmbed(
                   "❌ Invalid Prize",
                   "Prize must be between 1 and 256 characters.",
-                  "Red",
+                  "Red"
                 ),
               ],
             });
@@ -215,7 +216,7 @@ export default {
           const optionsEmbed = createEmbed(
             "🎁 Giveaway Options",
             "Do you want to add a description or role requirement to your giveaway?",
-            "#FF73FA",
+            "#FF73FA"
           );
 
           // Create buttons for description and role requirement
@@ -237,7 +238,7 @@ export default {
           const optionsRow = new ActionRowBuilder().addComponents(
             descriptionButton,
             roleButton,
-            skipButton,
+            skipButton
           );
 
           const optionsMsg = await message.channel.send({
@@ -298,7 +299,7 @@ export default {
                     // Get the description from the modal
                     description =
                       modalSubmission.fields.getTextInputValue(
-                        "description_input",
+                        "description_input"
                       );
                     descriptionAdded = true;
 
@@ -310,8 +311,12 @@ export default {
                     // Update the embed to show description was added
                     const updatedEmbed = createEmbed(
                       "🎁 Giveaway Options",
-                      `Do you want to add a description or role requirement to your giveaway?\n\n${descriptionAdded ? "✅" : "❌"} Description\n${roleAdded ? "✅" : "❌"} Role Requirement`,
-                      "#FF73FA",
+                      `Do you want to add a description or role requirement to your giveaway?\n\n${
+                        descriptionAdded ? "✅" : "❌"
+                      } Description\n${
+                        roleAdded ? "✅" : "❌"
+                      } Role Requirement`,
+                      "#FF73FA"
                     );
 
                     await optionsMsg.edit({
@@ -365,8 +370,12 @@ export default {
                       // Update the embed to show role was added
                       const updatedEmbed = createEmbed(
                         "🎁 Giveaway Options",
-                        `Do you want to add a description or role requirement to your giveaway?\n\n${descriptionAdded ? "✅" : "❌"} Description\n${roleAdded ? "✅" : "❌"} Role Requirement`,
-                        "#FF73FA",
+                        `Do you want to add a description or role requirement to your giveaway?\n\n${
+                          descriptionAdded ? "✅" : "❌"
+                        } Description\n${
+                          roleAdded ? "✅" : "❌"
+                        } Role Requirement`,
+                        "#FF73FA"
                       );
 
                       await optionsMsg.edit({
@@ -446,7 +455,7 @@ export default {
 
           const giveawayEmbed = await createGiveawayEmbed(
             giveawayObj,
-            duration,
+            duration
           );
 
           // Create buttons
@@ -462,7 +471,7 @@ export default {
 
           const row = new ActionRowBuilder().addComponents(
             enterButton,
-            viewParticipantsButton,
+            viewParticipantsButton
           );
 
           // Send giveaway message
@@ -487,166 +496,8 @@ export default {
             requiredRoleId,
           });
 
-          // Create a collector for the buttons
-          const buttonCollector =
-            giveawayMessage.createMessageComponentCollector({
-              componentType: ComponentType.Button,
-              time: duration,
-            });
-
-          buttonCollector.on("collect", async (interaction) => {
-            // Fetch the latest giveaway data
-            const currentGiveaway = await Giveaway.findOne({
-              messageId: giveawayMessage.id,
-            });
-
-            if (!currentGiveaway || currentGiveaway.status !== "ACTIVE") {
-              return interaction.reply({
-                content: "This giveaway has ended or been cancelled.",
-                ephemeral: true,
-              });
-            }
-
-            // Handle role requirement
-            if (
-              currentGiveaway.requiredRoleId &&
-              !interaction.member.roles.cache.has(
-                currentGiveaway.requiredRoleId,
-              )
-            ) {
-              const requiredRole = interaction.guild.roles.cache.get(
-                currentGiveaway.requiredRoleId,
-              );
-              return interaction.reply({
-                content: `You need the ${requiredRole} role to enter this giveaway!`,
-                ephemeral: true,
-              });
-            }
-
-            switch (interaction.customId) {
-              case "enter_giveaway": {
-                const isParticipant = currentGiveaway.participants.includes(
-                  interaction.user.id,
-                );
-
-                if (isParticipant) {
-                  // Remove user from participants
-                  await Giveaway.findByIdAndUpdate(currentGiveaway._id, {
-                    $pull: { participants: interaction.user.id },
-                  });
-
-                  await interaction.reply({
-                    content: "You have left the giveaway!",
-                    ephemeral: true,
-                  });
-                } else {
-                  // Add user to participants
-                  await Giveaway.findByIdAndUpdate(currentGiveaway._id, {
-                    $push: { participants: interaction.user.id },
-                  });
-
-                  await interaction.reply({
-                    content: "You have entered the giveaway! Good luck! 🍀",
-                    ephemeral: true,
-                  });
-                }
-
-                // Update the embed
-                const updatedGiveaway = await Giveaway.findById(
-                  currentGiveaway._id,
-                );
-                const remaining = getTimeRemaining(updatedGiveaway.endTime);
-                const updatedEmbed = await createGiveawayEmbed(
-                  updatedGiveaway,
-                  remaining,
-                );
-
-                await giveawayMessage.edit({
-                  embeds: [updatedEmbed],
-                });
-                break;
-              }
-
-              case "view_participants": {
-                const participants = currentGiveaway.participants.map(
-                  (id) => `<@${id}>`,
-                );
-
-                const participantsList =
-                  participants.length > 0
-                    ? participants.join(", ")
-                    : "No participants yet.";
-
-                const participantsChunks = [];
-                let currentChunk = "";
-
-                for (const participant of participants) {
-                  if (currentChunk.length + participant.length > 1900) {
-                    participantsChunks.push(currentChunk);
-                    currentChunk = participant;
-                  } else {
-                    currentChunk += (currentChunk ? ", " : "") + participant;
-                  }
-                }
-
-                if (currentChunk) {
-                  participantsChunks.push(currentChunk);
-                }
-
-                if (participantsChunks.length === 0) {
-                  participantsChunks.push("No participants yet.");
-                }
-
-                const firstChunk = participantsChunks[0];
-
-                await interaction.reply({
-                  content: `**Participants (${currentGiveaway.participants.length}):** ${firstChunk}${
-                    participantsChunks.length > 1
-                      ? "\n\n*Too many participants to display all at once.*"
-                      : ""
-                  }`,
-                  ephemeral: true,
-                });
-                break;
-              }
-            }
-          });
-
-          // Set up interval to update the giveaway message every minute
-          const intervalId = setInterval(async () => {
-            try {
-              const currentGiveaway = await Giveaway.findOne({
-                messageId: giveawayMessage.id,
-              });
-
-              if (!currentGiveaway || currentGiveaway.status !== "ACTIVE") {
-                clearInterval(intervalId);
-                return;
-              }
-
-              const remaining = getTimeRemaining(currentGiveaway.endTime);
-
-              // Only update every minute to avoid rate limits
-              if (remaining <= 0) {
-                clearInterval(intervalId);
-                // End the giveaway
-                await endGiveaway(currentGiveaway);
-                return;
-              }
-
-              const updatedEmbed = await createGiveawayEmbed(
-                currentGiveaway,
-                remaining,
-              );
-
-              await giveawayMessage.edit({
-                embeds: [updatedEmbed],
-              });
-            } catch (error) {
-              console.error("Error updating giveaway:", error);
-              clearInterval(intervalId);
-            }
-          }, 60000);
+          // Set up the giveaway interactions using the centralized function
+          await setupGiveawayInteractions(newGiveaway);
 
           // Send confirmation message
           return message.channel.send({
@@ -654,7 +505,7 @@ export default {
               createEmbed(
                 "✅ Giveaway Created",
                 `Your giveaway for **${prize}** has been created and will end ${endTime.toLocaleString()}.`,
-                "Green",
+                "Green"
               ),
             ],
           });
@@ -667,7 +518,7 @@ export default {
                 createEmbed(
                   "❌ Missing Arguments",
                   `Please provide the message ID of the giveaway to end.\nUsage: \`${prefix}giveaway end <messageID>\``,
-                  "Red",
+                  "Red"
                 ),
               ],
             });
@@ -686,7 +537,7 @@ export default {
                 createEmbed(
                   "❌ Giveaway Not Found",
                   "Could not find an active giveaway with that message ID.",
-                  "Red",
+                  "Red"
                 ),
               ],
             });
@@ -699,7 +550,7 @@ export default {
               createEmbed(
                 "✅ Giveaway Ended",
                 `The giveaway for **${giveaway.prize}** has been ended.`,
-                "Green",
+                "Green"
               ),
             ],
           });
@@ -712,7 +563,7 @@ export default {
                 createEmbed(
                   "❌ Missing Arguments",
                   `Please provide the message ID of the giveaway to reroll.\nUsage: \`${prefix}giveaway reroll <messageID> [winners]\``,
-                  "Red",
+                  "Red"
                 ),
               ],
             });
@@ -727,7 +578,7 @@ export default {
                 createEmbed(
                   "❌ Invalid Winner Count",
                   "Winner count must be between 1 and 20.",
-                  "Red",
+                  "Red"
                 ),
               ],
             });
@@ -745,7 +596,7 @@ export default {
                 createEmbed(
                   "❌ Giveaway Not Found",
                   "Could not find an ended giveaway with that message ID.",
-                  "Red",
+                  "Red"
                 ),
               ],
             });
@@ -757,7 +608,7 @@ export default {
                 createEmbed(
                   "❌ No Participants",
                   "There were no participants in this giveaway.",
-                  "Red",
+                  "Red"
                 ),
               ],
             });
@@ -767,7 +618,7 @@ export default {
           const newWinners = selectWinners(
             giveaway.participants,
             winnerCount,
-            previousWinners,
+            previousWinners
           );
 
           if (newWinners.length === 0) {
@@ -776,7 +627,7 @@ export default {
                 createEmbed(
                   "❌ No Eligible Winners",
                   "Could not find any eligible winners. All participants have already won.",
-                  "Red",
+                  "Red"
                 ),
               ],
             });
@@ -792,7 +643,7 @@ export default {
               createEmbed(
                 "🎊 Giveaway Rerolled",
                 `**Prize:** ${giveaway.prize}\n**New Winners:** ${winnerMentions}`,
-                "#FFD700",
+                "#FFD700"
               ),
             ],
           });
@@ -802,7 +653,7 @@ export default {
               createEmbed(
                 "✅ Giveaway Rerolled",
                 `Successfully rerolled **${newWinners.length}** winners for the giveaway **${giveaway.prize}**.`,
-                "Green",
+                "Green"
               ),
             ],
           });
@@ -820,7 +671,7 @@ export default {
                 createEmbed(
                   "📋 Active Giveaways",
                   "There are no active giveaways in this server.",
-                  "#FF73FA",
+                  "#FF73FA"
                 ),
               ],
             });
@@ -830,13 +681,13 @@ export default {
             .map((g, index) => {
               const remaining = getTimeRemaining(g.endTime);
               const timeLeft = formatTime(remaining);
-              return `**${index + 1}.** [${g.prize}](https://discord.com/channels/${
-                g.guildId
-              }/${g.channelId}/${g.messageId})\n• Ends: <t:${Math.floor(
-                g.endTime / 1000,
-              )}:R>\n• Winner(s): ${g.winnerCount}\n• Entries: ${
-                g.participants.length
-              }`;
+              return `**${index + 1}.** [${
+                g.prize
+              }](https://discord.com/channels/${g.guildId}/${g.channelId}/${
+                g.messageId
+              })\n• Ends: <t:${Math.floor(g.endTime / 1000)}:R>\n• Winner(s): ${
+                g.winnerCount
+              }\n• Entries: ${g.participants.length}`;
             })
             .join("\n\n");
 
@@ -845,7 +696,7 @@ export default {
               createEmbed(
                 `📋 Active Giveaways (${activeGiveaways.length})`,
                 giveawayList,
-                "#FF73FA",
+                "#FF73FA"
               ),
             ],
           });
@@ -858,7 +709,7 @@ export default {
                 createEmbed(
                   "❌ Missing Arguments",
                   `Please provide the message ID of the giveaway to cancel.\nUsage: \`${prefix}giveaway cancel <messageID>\``,
-                  "Red",
+                  "Red"
                 ),
               ],
             });
@@ -877,7 +728,7 @@ export default {
                 createEmbed(
                   "❌ Giveaway Not Found",
                   "Could not find an active giveaway with that message ID.",
-                  "Red",
+                  "Red"
                 ),
               ],
             });
@@ -892,7 +743,7 @@ export default {
             // Update the giveaway message
             const channel = await client.channels.fetch(giveaway.channelId);
             const giveawayMessage = await channel.messages.fetch(
-              giveaway.messageId,
+              giveaway.messageId
             );
 
             // Create cancelled giveaway embed
@@ -901,7 +752,7 @@ export default {
               .setDescription(
                 `${
                   giveaway.description ? `${giveaway.description}\n\n` : ""
-                }This giveaway has been cancelled by a moderator.`,
+                }This giveaway has been cancelled by a moderator.`
               )
               .setColor("#808080")
               .setTimestamp();
@@ -919,7 +770,7 @@ export default {
               createEmbed(
                 "✅ Giveaway Cancelled",
                 `The giveaway for **${giveaway.prize}** has been cancelled.`,
-                "Green",
+                "Green"
               ),
             ],
           });
@@ -931,7 +782,7 @@ export default {
               createEmbed(
                 "❌ Invalid Subcommand",
                 `Unknown subcommand: \`${subcommand}\`. Use \`${prefix}giveaway\` to see available commands.`,
-                "Red",
+                "Red"
               ),
             ],
           });
@@ -943,7 +794,7 @@ export default {
           createEmbed(
             "❌ Error",
             "An error occurred while processing your command.",
-            "Red",
+            "Red"
           ),
         ],
       });
@@ -984,7 +835,7 @@ async function endGiveaway(giveaway) {
         `${giveaway.description ? `${giveaway.description}\n\n` : ""}` +
           `**Winners:** ${winnerMentions}\n` +
           `**Host:** <@${giveaway.creatorId}>\n` +
-          `**Entries:** ${giveaway.participants.length}`,
+          `**Entries:** ${giveaway.participants.length}`
       );
 
       // Send winner announcement
@@ -994,7 +845,7 @@ async function endGiveaway(giveaway) {
           createEmbed(
             "🎊 Giveaway Ended",
             `**Prize:** ${giveaway.prize}\n**Winners:** ${winnerMentions}`,
-            "#FFD700",
+            "#FFD700"
           ),
         ],
       });
@@ -1003,7 +854,7 @@ async function endGiveaway(giveaway) {
         `${giveaway.description ? `${giveaway.description}\n\n` : ""}` +
           "**Winners:** None (not enough participants)\n" +
           `**Host:** <@${giveaway.creatorId}>\n` +
-          `**Entries:** ${giveaway.participants.length}`,
+          `**Entries:** ${giveaway.participants.length}`
       );
 
       await channel.send({
@@ -1011,7 +862,7 @@ async function endGiveaway(giveaway) {
           createEmbed(
             "🎊 Giveaway Ended",
             `No winners were selected for **${giveaway.prize}** because there weren't enough participants.`,
-            "#FFD700",
+            "#FFD700"
           ),
         ],
       });
