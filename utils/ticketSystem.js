@@ -4,7 +4,6 @@ import {
   EmbedBuilder,
   PermissionFlagsBits,
   ButtonStyle,
-  ChannelType,
 } from "discord.js";
 
 /**

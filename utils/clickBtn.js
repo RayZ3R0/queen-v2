@@ -106,141 +106,218 @@ export default async function clickBtn(interaction, options = {}) {
 
     // ----- CREATE TICKET -----
     if (interaction.customId === "create_ticket") {
-      await interaction.deferUpdate();
-      let ticketName = `ticket_${interaction.user.id}`;
-      if (options.ticketname) {
-        ticketName = options.ticketname
-          .replace("{username}", interaction.user.username)
-          .replace("{id}", interaction.user.id)
-          .replace("{tag}", interaction.user.tag);
-      }
+      // Check for existing ticket first
       const topicText = `Ticket opened by <@${interaction.user.id}>`;
       const existingTicket = interaction.guild.channels.cache.find(
         (ch) => ch.type === ChannelType.GuildText && ch.topic === topicText
       );
-      // Normalize color options for transcript, close, open, and delete buttons.
-      const transcriptStyle = convertButtonStyle(options.trColor);
-      const closeStyle = convertButtonStyle(options.closeColor);
-      const openStyle = convertButtonStyle(options.openColor);
-      const deleteStyle = convertButtonStyle(options.delColor); // <-- ADDED THIS LINE
 
       if (existingTicket) {
-        await interaction.followUp({
+        await interaction.reply({
           content:
             options.cooldownMsg ||
             "You already have a ticket open. Please delete it before opening another ticket.",
           ephemeral: true,
         });
         return;
-      } else {
-        const parentId = options.categoryID || null;
-        let parentCategory = null;
-        if (parentId) {
-          const categoryChannel =
-            interaction.guild.channels.cache.get(parentId);
-          if (
-            categoryChannel &&
-            categoryChannel.type === ChannelType.GuildCategory
-          ) {
-            parentCategory = categoryChannel;
-          }
-        }
-        // Create the ticket channel (v14 expects ChannelType.GuildText).
-        const ticketChannel = await interaction.guild.channels.create({
-          name: ticketName,
-          type: ChannelType.GuildText,
-          topic: topicText,
-          parent: parentCategory,
-          permissionOverwrites: [
-            {
-              id: interaction.guild.roles.everyone.id,
-              deny: [
-                PermissionFlagsBits.ViewChannel,
-                PermissionFlagsBits.SendMessages,
-                PermissionFlagsBits.ReadMessageHistory,
-              ],
-            },
-            {
-              id: interaction.user.id,
-              allow: [
-                PermissionFlagsBits.ViewChannel,
-                PermissionFlagsBits.SendMessages,
-                PermissionFlagsBits.ReadMessageHistory,
-              ],
-            },
-          ],
-        });
-        // Handle role assignments and pingRoles.
-        let roleIds = [];
-        if (options.role) {
-          if (Array.isArray(options.role)) {
-            roleIds.push(...options.role);
-          } else {
-            roleIds.push(options.role);
-          }
-        }
-        if (options.pingRole) {
-          if (Array.isArray(options.pingRole)) {
-            roleIds.push(...options.pingRole);
-          } else {
-            roleIds.push(options.pingRole);
-          }
-        }
-        for (const rId of roleIds) {
-          ticketChannel.permissionOverwrites
-            .create(rId, {
-              ViewChannel: true,
-              SendMessages: true,
-              ReadMessageHistory: true,
-            })
-            .catch((er) => {
-              console.error(
-                `Error setting permission for role ${rId}: ${er.stack}`
-              );
-              ticketChannel.send({
-                content: `Error: \n\`\`\`${er.stack}\`\`\``,
-              });
-            });
-        }
-        const timeoutText =
-          options.timeout === false
-            ? ""
-            : "\nThis channel will be deleted after 10 minutes to reduce clutter";
-        const ticketEmbed =
-          options.embed ||
-          new EmbedBuilder()
-            .setTitle("Ticket Created")
-            .setDescription(
-              options.embedDesc ||
-                `Ticket has been raised by ${interaction.user}.\n**User ID:** \`${interaction.user.id}\` | **User Tag:** \`${interaction.user.tag}\`${timeoutText}`
-            )
-            .setThumbnail(interaction.guild.iconURL())
-            .setTimestamp()
-            .setColor(options.embedColor || "#075FFF")
-            .setFooter({
-              text: footerText,
-              iconURL: interaction.guild.iconURL(),
-            });
-        // Create a close button.
-        const closeButton = new ButtonBuilder()
-          .setStyle(closeStyle || ButtonStyle.Primary)
-          .setEmoji(options.closeEmoji || "🔒")
-          .setLabel("Close")
-          .setCustomId("close_ticket");
-        const closeRow = new ActionRowBuilder().addComponents(closeButton);
-        // Send the ticket panel in the newly created channel and pin it.
-        ticketChannel
-          .send({
-            content: `${interaction.user} ${
-              roleIds.length ? roleIds.map((r) => `<@&${r}>`).join(" ") : ""
-            }`,
-            embeds: [ticketEmbed],
-            components: [closeRow],
-          })
-          .then(async (msg) => {
-            await msg.pin();
-          });
       }
+
+      // Show confirmation dialog
+      const confirmEmbed = new EmbedBuilder()
+        .setTitle("Create Support Ticket")
+        .setDescription("Are you sure you want to open a ticket?")
+        .setColor("#075FFF")
+        .setTimestamp();
+
+      const confirmButtons = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("confirm_ticket_yes")
+          .setLabel("Yes")
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId("confirm_ticket_no")
+          .setLabel("No")
+          .setStyle(ButtonStyle.Secondary)
+      );
+
+      const confirmMsg = await interaction.reply({
+        embeds: [confirmEmbed],
+        components: [confirmButtons],
+        ephemeral: true,
+        fetchReply: true,
+      });
+
+      // Create collector for confirmation buttons with 1 minute timeout
+      const confirmCollector = confirmMsg.createMessageComponentCollector({
+        filter: (i) =>
+          i.user.id === interaction.user.id &&
+          (i.customId === "confirm_ticket_yes" ||
+            i.customId === "confirm_ticket_no"),
+        time: 60000, // 1 minute
+        max: 1, // Only collect one response
+      });
+
+      confirmCollector.on("collect", async (buttonInt) => {
+        if (buttonInt.customId === "confirm_ticket_yes") {
+          // Update confirmation message
+          await buttonInt.update({
+            content: "✅ Creating your ticket...",
+            embeds: [],
+            components: [],
+          });
+
+          // Proceed with ticket creation
+          let ticketName = `ticket_${interaction.user.id}`;
+          if (options.ticketname) {
+            ticketName = options.ticketname
+              .replace("{username}", interaction.user.username)
+              .replace("{id}", interaction.user.id)
+              .replace("{tag}", interaction.user.tag);
+          }
+
+          // Normalize color options for transcript, close, open, and delete buttons.
+          const transcriptStyle = convertButtonStyle(options.trColor);
+          const closeStyle = convertButtonStyle(options.closeColor);
+          const openStyle = convertButtonStyle(options.openColor);
+          const deleteStyle = convertButtonStyle(options.delColor);
+
+          const parentId = options.categoryID || null;
+          let parentCategory = null;
+          if (parentId) {
+            const categoryChannel =
+              interaction.guild.channels.cache.get(parentId);
+            if (
+              categoryChannel &&
+              categoryChannel.type === ChannelType.GuildCategory
+            ) {
+              parentCategory = categoryChannel;
+            }
+          }
+
+          // Create the ticket channel
+          const ticketChannel = await interaction.guild.channels.create({
+            name: ticketName,
+            type: ChannelType.GuildText,
+            topic: topicText,
+            parent: parentCategory,
+            permissionOverwrites: [
+              {
+                id: interaction.guild.roles.everyone.id,
+                deny: [
+                  PermissionFlagsBits.ViewChannel,
+                  PermissionFlagsBits.SendMessages,
+                  PermissionFlagsBits.ReadMessageHistory,
+                ],
+              },
+              {
+                id: interaction.user.id,
+                allow: [
+                  PermissionFlagsBits.ViewChannel,
+                  PermissionFlagsBits.SendMessages,
+                  PermissionFlagsBits.ReadMessageHistory,
+                ],
+              },
+            ],
+          });
+
+          // Handle role assignments and pingRoles.
+          let roleIds = [];
+          if (options.role) {
+            if (Array.isArray(options.role)) {
+              roleIds.push(...options.role);
+            } else {
+              roleIds.push(options.role);
+            }
+          }
+          if (options.pingRole) {
+            if (Array.isArray(options.pingRole)) {
+              roleIds.push(...options.pingRole);
+            } else {
+              roleIds.push(options.pingRole);
+            }
+          }
+
+          for (const rId of roleIds) {
+            ticketChannel.permissionOverwrites
+              .create(rId, {
+                ViewChannel: true,
+                SendMessages: true,
+                ReadMessageHistory: true,
+              })
+              .catch((er) => {
+                console.error(
+                  `Error setting permission for role ${rId}: ${er.stack}`
+                );
+                ticketChannel.send({
+                  content: `Error: \n\`\`\`${er.stack}\`\`\``,
+                });
+              });
+          }
+
+          const timeoutText =
+            options.timeout === false
+              ? ""
+              : "\nThis channel will be deleted after 10 minutes to reduce clutter";
+          const ticketEmbed =
+            options.embed ||
+            new EmbedBuilder()
+              .setTitle("Ticket Created")
+              .setDescription(
+                options.embedDesc ||
+                  `Ticket has been raised by ${interaction.user}.\n**User ID:** \`${interaction.user.id}\` | **User Tag:** \`${interaction.user.tag}\`${timeoutText}`
+              )
+              .setThumbnail(interaction.guild.iconURL())
+              .setTimestamp()
+              .setColor(options.embedColor || "#075FFF")
+              .setFooter({
+                text: footerText,
+                iconURL: interaction.guild.iconURL(),
+              });
+
+          // Create a close button.
+          const closeButton = new ButtonBuilder()
+            .setStyle(closeStyle || ButtonStyle.Primary)
+            .setEmoji(options.closeEmoji || "🔒")
+            .setLabel("Close")
+            .setCustomId("close_ticket");
+          const closeRow = new ActionRowBuilder().addComponents(closeButton);
+
+          // Send the ticket panel in the newly created channel and pin it.
+          ticketChannel
+            .send({
+              content: `${interaction.user} ${
+                roleIds.length ? roleIds.map((r) => `<@&${r}>`).join(" ") : ""
+              }`,
+              embeds: [ticketEmbed],
+              components: [closeRow],
+            })
+            .then(async (msg) => {
+              await msg.pin();
+            });
+        } else if (buttonInt.customId === "confirm_ticket_no") {
+          // User clicked No
+          await buttonInt.update({
+            content: "❌ Ticket creation cancelled",
+            embeds: [],
+            components: [],
+          });
+        }
+      });
+
+      confirmCollector.on("end", async (collected, reason) => {
+        if (reason === "time" && collected.size === 0) {
+          // Timeout - update the ephemeral message
+          await interaction
+            .editReply({
+              content: "❌ Ticket creation timed out - please try again",
+              embeds: [],
+              components: [],
+            })
+            .catch(() => {}); // Ignore errors if message was already handled
+        }
+      });
+
+      return; // End create_ticket processing here
     } // End create_ticket branch
 
     // ----- TRANSCRIPT TICKET -----
@@ -293,7 +370,7 @@ export default async function clickBtn(interaction, options = {}) {
       // Define the necessary style variables here:
       const transcriptStyle = convertButtonStyle(options.trColor);
       const closeStyle = convertButtonStyle(options.closeColor);
-      const openStyle = convertButtonStyle(options.openColor);
+      const openStyle = convertButtonStyle(options.openStyle);
       const deleteStyle = convertButtonStyle(options.delColor);
 
       // Build Delete, Reopen, and Transcript buttons.
