@@ -133,11 +133,11 @@ export default async function clickBtn(interaction, options = {}) {
         new ButtonBuilder()
           .setCustomId("confirm_ticket_yes")
           .setLabel("Yes")
-          .setStyle(ButtonStyle.Success),
+          .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId("confirm_ticket_no")
           .setLabel("No")
-          .setStyle(ButtonStyle.Secondary)
+          .setStyle(ButtonStyle.Success)
       );
 
       const confirmMsg = await interaction.reply({
