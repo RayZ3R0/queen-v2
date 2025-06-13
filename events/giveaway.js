@@ -13,7 +13,7 @@ import { client } from "../bot.js";
 const activeIntervals = new Map();
 
 /**
- * Handles the setup of active giveaways when the bot starts
+ * Handles the setup of active giveaways when the bot startss
  */
 export default async (client) => {
   try {
