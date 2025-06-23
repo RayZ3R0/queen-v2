@@ -102,6 +102,7 @@ client.on("messageCreate", async (message) => {
     "kneegear",
     "knee gear",
     "kneeger",
+    "saedma",
   ];
 
   const containsBadWords = messageWords.some((word) => badWords.includes(word));
