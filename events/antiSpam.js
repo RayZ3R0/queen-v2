@@ -188,6 +188,9 @@ client.on("messageCreate", async (message) => {
   // Skip if message is from a bot or has no content
   if (message.author.bot || !message.content) return;
 
+  // Normalize content: replace all \ with /
+  message.content = message.content.replace(/\\/g, "/");
+
   try {
     const { member, guild, channel, content } = message;
 
