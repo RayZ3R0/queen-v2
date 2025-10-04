@@ -69,3 +69,34 @@ client.on("messageCreate", async (message) => {
     console.error("Error in translation handler:", error);
   }
 });
+
+// --------------------- Partnership Check --------------------- //
+client.on("messageCreate", async (message) => {
+  try {
+    // Ignore messages from bots or commands (e.g. those starting with ';')
+    if (message.author.bot || message.content.startsWith(";")) return;
+
+    // Ignore if the message is in the specified category
+    if (message.channel.parentId === "968036263678591036") return;
+
+    // Check if the message contains "partnership", "partnerships", or "partner" (case-insensitive)
+    const lowerContent = message.content.toLowerCase();
+    if (
+      lowerContent.includes("partnership") ||
+      lowerContent.includes("partnerships") ||
+      lowerContent.includes("partner")
+    ) {
+      // Send the response message
+      const responseMessage = await message.channel.send(
+        "Please check <#1026411687089274910> first."
+      );
+
+      // Delete the bot's message after 1 minute (60,000 milliseconds)
+      setTimeout(() => {
+        responseMessage.delete().catch(console.error);
+      }, 60000);
+    }
+  } catch (error) {
+    console.error("Error in partnership check:", error);
+  }
+});
