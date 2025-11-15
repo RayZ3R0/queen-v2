@@ -6,7 +6,7 @@ import AntiSpam from "../schema/antiSpam.js";
 
 // Channel IDs for logging - Update these with actual channel IDs
 const ADMIN_CHANNEL_ID = "902045721983844382";
-const LOG_CHANNEL_ID = "938770418599337984";
+const LOG_CHANNEL_ID = "965509744859185262";
 
 /**
  * Create and send detailed log embed
