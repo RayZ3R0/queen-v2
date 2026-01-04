@@ -450,16 +450,6 @@ client.on("messageCreate", async (message) => {
     // Ignore DMs
     if (!message.guild) return;
 
-    // Ignore messages from mods/admins
-    if (message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      await sendDebug("Ignoring admin message", { userId: message.author.id });
-      return;
-    }
-    if (message.member.roles.cache.has(MOD_ROLE_ID)) {
-      await sendDebug("Ignoring mod message", { userId: message.author.id });
-      return;
-    }
-
     await sendDebug("Processing message for blacklist check", {
       author: message.author.tag,
       authorId: message.author.id,
@@ -471,6 +461,22 @@ client.on("messageCreate", async (message) => {
     const violations = await checkBlacklist(message);
 
     if (violations.length > 0) {
+      // Ignore messages from mods/admins (but only log if they triggered a violation)
+      if (message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        await sendDebug("Ignoring admin message with violation", { 
+          userId: message.author.id,
+          violationType: violations[0].type 
+        });
+        return;
+      }
+      if (message.member.roles.cache.has(MOD_ROLE_ID)) {
+        await sendDebug("Ignoring mod message with violation", { 
+          userId: message.author.id,
+          violationType: violations[0].type 
+        });
+        return;
+      }
+
       await handleViolation(message, violations);
     } else {
       await sendDebug("No violations found", { messageId: message.id });
