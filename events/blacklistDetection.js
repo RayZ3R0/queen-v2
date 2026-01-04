@@ -13,6 +13,37 @@ const TIMEOUT_DURATION = 60000; // 1 minute (60000ms) - change to 86400000 for 2
 const MOD_CHANNEL_ID = "965509744859185262";
 const APPEAL_CHANNEL_ID = "970640479463022613";
 const MOD_ROLE_ID = "920210140093902868";
+const DEBUG_CHANNEL_ID = "1009408632317804544";
+
+// Debug function
+async function sendDebug(message, data = {}) {
+  const debugMsg = `[BLACKLIST DEBUG] ${message}`;
+  console.log(debugMsg, data);
+  
+  try {
+    const debugChannel = client.channels.cache.get(DEBUG_CHANNEL_ID);
+    if (debugChannel) {
+      const embed = new EmbedBuilder()
+        .setColor("Yellow")
+        .setTitle("🔍 Blacklist Debug")
+        .setDescription(message)
+        .setTimestamp();
+      
+      if (Object.keys(data).length > 0) {
+        const dataStr = JSON.stringify(data, null, 2);
+        if (dataStr.length < 1000) {
+          embed.addFields({ name: "Data", value: `\`\`\`json\n${dataStr}\`\`\`` });
+        } else {
+          embed.addFields({ name: "Data", value: `\`\`\`\n${dataStr.substring(0, 997)}...\`\`\`` });
+        }
+      }
+      
+      await debugChannel.send({ embeds: [embed] });
+    }
+  } catch (error) {
+    console.error("Error sending debug message:", error);
+  }
+}
 
 // Cache for blacklist to reduce database queries
 let blacklistCache = {
@@ -29,6 +60,11 @@ async function loadBlacklist(guildId) {
 
   // Use cache if still valid
   if (now - blacklistCache.lastUpdate < CACHE_DURATION) {
+    await sendDebug("Using cached blacklist", {
+      textCount: blacklistCache.data.text.length,
+      urlCount: blacklistCache.data.url.length,
+      imageCount: blacklistCache.data.image.length,
+    });
     return blacklistCache.data;
   }
 
@@ -47,6 +83,13 @@ async function loadBlacklist(guildId) {
     data: data,
   };
 
+  await sendDebug("Loaded blacklist from database", {
+    totalEntries: entries.length,
+    textCount: data.text.length,
+    urlCount: data.url.length,
+    imageCount: data.image.length,
+  });
+
   return data;
 }
 
@@ -64,12 +107,31 @@ async function checkBlacklist(message) {
   const blacklist = await loadBlacklist(message.guild.id);
   const violations = [];
 
+  await sendDebug("Checking message for blacklist violations", {
+    author: message.author.tag,
+    authorId: message.author.id,
+    channelId: message.channel.id,
+    contentLength: message.content?.length || 0,
+    hasAttachments: message.attachments.size > 0,
+    attachmentCount: message.attachments.size,
+  });
+
   // 1. Check text patterns (case-insensitive exact match)
   if (message.content) {
     const contentLower = message.content.toLowerCase();
 
+    await sendDebug("Checking text patterns", {
+      messageContent: message.content.substring(0, 100),
+      contentLower: contentLower.substring(0, 100),
+      blacklistTextCount: blacklist.text.length,
+    });
+
     for (const entry of blacklist.text) {
       if (contentLower === entry.content) {
+        await sendDebug("TEXT MATCH FOUND!", {
+          matched: entry.content,
+          messageContent: message.content,
+        });
         violations.push({
           type: "text",
           entry: entry,
@@ -85,13 +147,26 @@ async function checkBlacklist(message) {
     const urlRegex = /https?:\/\/[^\s\[\]()]+/gi;
     const urls = message.content.match(urlRegex) || [];
 
+    await sendDebug("Checking URLs", {
+      urlsFound: urls.length,
+      urls: urls,
+      blacklistUrlCount: blacklist.url.length,
+    });
+
     for (const url of urls) {
       // Skip direct image URLs (they're handled separately)
-      if (isDirectImageUrl(url)) continue;
+      if (isDirectImageUrl(url)) {
+        await sendDebug("Skipping direct image URL (will check later)", { url });
+        continue;
+      }
 
       const urlLower = url.toLowerCase();
       for (const entry of blacklist.url) {
         if (urlLower === entry.content) {
+          await sendDebug("URL MATCH FOUND!", {
+            matched: entry.content,
+            url: url,
+          });
           violations.push({
             type: "url",
             entry: entry,
@@ -106,13 +181,34 @@ async function checkBlacklist(message) {
 
   // 3. Check images (attachments)
   if (violations.length === 0) {
+    await sendDebug("Checking image attachments", {
+      attachmentCount: message.attachments.size,
+      blacklistImageCount: blacklist.image.length,
+    });
+
     for (const attachment of message.attachments.values()) {
       if (attachment.contentType?.startsWith("image/")) {
         try {
+          await sendDebug("Hashing attachment", {
+            name: attachment.name,
+            url: attachment.url,
+          });
           const hash = await calculatePerceptualHash(attachment.url);
+          await sendDebug("Attachment hash calculated", { hash });
 
           for (const entry of blacklist.image) {
-            if (areImagesSimilar(hash, entry.content)) {
+            const similar = areImagesSimilar(hash, entry.content);
+            await sendDebug("Comparing with blacklisted image", {
+              messageHash: hash,
+              blacklistHash: entry.content,
+              similar: similar,
+            });
+
+            if (similar) {
+              await sendDebug("IMAGE MATCH FOUND!", {
+                attachmentName: attachment.name,
+                hash: hash,
+              });
               violations.push({
                 type: "image",
                 entry: entry,
@@ -124,6 +220,10 @@ async function checkBlacklist(message) {
           }
         } catch (error) {
           console.error("Error checking attachment:", error);
+          await sendDebug("Error checking attachment", {
+            error: error.message,
+            attachment: attachment.name,
+          });
         }
         if (violations.length > 0) break;
       }
@@ -134,12 +234,30 @@ async function checkBlacklist(message) {
   if (message.content && violations.length === 0) {
     const imageUrls = extractDirectImageUrls(message.content);
 
+    await sendDebug("Checking direct image URLs", {
+      imageUrlsFound: imageUrls.length,
+      imageUrls: imageUrls,
+    });
+
     for (const url of imageUrls) {
       try {
+        await sendDebug("Hashing image URL", { url });
         const hash = await calculatePerceptualHash(url);
+        await sendDebug("Image URL hash calculated", { hash });
 
         for (const entry of blacklist.image) {
-          if (areImagesSimilar(hash, entry.content)) {
+          const similar = areImagesSimilar(hash, entry.content);
+          await sendDebug("Comparing URL image with blacklisted image", {
+            messageHash: hash,
+            blacklistHash: entry.content,
+            similar: similar,
+          });
+
+          if (similar) {
+            await sendDebug("IMAGE URL MATCH FOUND!", {
+              url: url,
+              hash: hash,
+            });
             violations.push({
               type: "image",
               entry: entry,
@@ -150,10 +268,19 @@ async function checkBlacklist(message) {
         }
       } catch (error) {
         console.error("Error checking image URL:", error);
+        await sendDebug("Error checking image URL", {
+          error: error.message,
+          url: url,
+        });
       }
       if (violations.length > 0) break;
     }
   }
+
+  await sendDebug("Check complete", {
+    violationsFound: violations.length,
+    violationType: violations.length > 0 ? violations[0].type : null,
+  });
 
   return violations;
 }
@@ -166,6 +293,14 @@ async function handleViolation(message, violations) {
 
   const violation = violations[0]; // Use first violation
   const { entry, matched, type, attachmentName } = violation;
+
+  await sendDebug("HANDLING VIOLATION", {
+    type: type,
+    matched: matched?.substring(0, 100),
+    reason: entry.reason,
+    userId: message.author.id,
+    userName: message.author.tag,
+  });
 
   try {
     // 1. Delete the message
@@ -286,9 +421,21 @@ async function handleViolation(message, violations) {
         content: `<@&${MOD_ROLE_ID}>`,
         embeds: [modEmbed],
       });
+
+      await sendDebug("Mod notification sent successfully");
     }
+
+    await sendDebug("Violation handled successfully", {
+      deleted: true,
+      timedOut: true,
+      dmSent: "attempted",
+    });
   } catch (error) {
     console.error("Error handling blacklist violation:", error);
+    await sendDebug("ERROR handling violation", {
+      error: error.message,
+      stack: error.stack,
+    });
   }
 }
 
@@ -304,14 +451,33 @@ client.on("messageCreate", async (message) => {
     if (!message.guild) return;
 
     // Ignore messages from mods/admins
-    if (message.member.permissions.has(PermissionFlagsBits.Administrator)) return;
-    if (message.member.roles.cache.has(MOD_ROLE_ID)) return;
+    if (message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+      await sendDebug("Ignoring admin message", { userId: message.author.id });
+      return;
+    }
+    if (message.member.roles.cache.has(MOD_ROLE_ID)) {
+      await sendDebug("Ignoring mod message", { userId: message.author.id });
+      return;
+    }
+
+    await sendDebug("Processing message for blacklist check", {
+      author: message.author.tag,
+    await sendDebug("ERROR in main event handler", {
+      error: error.message,
+      stack: error.stack,
+    });
+      authorId: message.author.id,
+      channelId: message.channel.id,
+      guildId: message.guild.id,
+    });
 
     // Check blacklist
     const violations = await checkBlacklist(message);
 
     if (violations.length > 0) {
       await handleViolation(message, violations);
+    } else {
+      await sendDebug("No violations found", { messageId: message.id });
     }
   } catch (error) {
     console.error("Error in blacklist detection:", error);
