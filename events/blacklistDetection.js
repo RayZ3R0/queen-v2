@@ -6,6 +6,7 @@ import {
   areImagesSimilar,
   extractDirectImageUrls,
   isDirectImageUrl,
+  hammingDistance,
 } from "../utils/imageHash.js";
 
 // Configuration
@@ -206,10 +207,13 @@ async function checkBlacklist(message) {
           await sendDebug("Attachment hash calculated", { hash });
 
           for (const entry of blacklist.image) {
+            const distance = hammingDistance(hash, entry.content);
             const similar = areImagesSimilar(hash, entry.content);
             await sendDebug("Comparing with blacklisted image", {
               messageHash: hash,
               blacklistHash: entry.content,
+              hammingDistance: distance,
+              threshold: 5,
               similar: similar,
             });
 
@@ -255,10 +259,13 @@ async function checkBlacklist(message) {
         await sendDebug("Image URL hash calculated", { hash });
 
         for (const entry of blacklist.image) {
+          const distance = hammingDistance(hash, entry.content);
           const similar = areImagesSimilar(hash, entry.content);
           await sendDebug("Comparing URL image with blacklisted image", {
             messageHash: hash,
             blacklistHash: entry.content,
+            hammingDistance: distance,
+            threshold: 5,
             similar: similar,
           });
 
