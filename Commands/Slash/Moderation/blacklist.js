@@ -427,17 +427,34 @@ async function handleImageUrl(interaction, reason) {
 async function handleRemove(interaction) {
   const id = interaction.options.getString("id");
 
-  const entry = await Blacklist.findOneAndDelete({
-    _id: id,
-    guildId: interaction.guild.id,
-  });
+  // If ID is short (6 chars), find by matching suffix
+  let entry;
+  if (id.length === 6) {
+    const allEntries = await Blacklist.find({
+      guildId: interaction.guild.id,
+    });
+    
+    entry = allEntries.find(e => e._id.toString().endsWith(id));
+    
+    if (!entry) {
+      throw new Error("Blacklist entry not found. Make sure you're using the 6-character ID from `/blacklist list`");
+    }
+    
+    await Blacklist.findByIdAndDelete(entry._id);
+  } else {
+    // Full ID provided
+    entry = await Blacklist.findOneAndDelete({
+      _id: id,
+      guildId: interaction.guild.id,
+    });
+    
+    if (!entry) {
+      throw new Error("Blacklist entry not found");
+    }
+  }
 
-  if (!entry) {
   // Clear cache
   clearBlacklistCache();
-
-    throw new Error("Blacklist entry not found");
-  }
 
   await interaction.editReply({
     content: `✅ Removed blacklist entry (Type: ${entry.type}, Triggers: ${entry.triggerCount})`,
