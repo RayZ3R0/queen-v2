@@ -14,9 +14,12 @@ const MOD_CHANNEL_ID = "965509744859185262";
 const APPEAL_CHANNEL_ID = "970640479463022613";
 const MOD_ROLE_ID = "920210140093902868";
 const DEBUG_CHANNEL_ID = "1009408632317804544";
+const DEBUG_ENABLED = false; // Set to true to enable debug logging
 
 // Debug function
 async function sendDebug(message, data = {}) {
+  if (!DEBUG_ENABLED) return; // Skip if debugging is disabled
+  
   const debugMsg = `[BLACKLIST DEBUG] ${message}`;
   console.log(debugMsg, data);
   
