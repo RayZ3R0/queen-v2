@@ -336,9 +336,9 @@ client.on(Events.MessageCreate, async (message) => {
     // Save all changes
     await memberActivity.save();
 
-    console.debug(
-      `Updated activity score for ${message.author.tag}: ${memberActivity.activityScore}`
-    );
+    // console.debug(
+    //   `Updated activity score for ${message.author.tag}: ${memberActivity.activityScore}`
+    // );
   } catch (error) {
     console.error("Error handling message event:", error);
   }

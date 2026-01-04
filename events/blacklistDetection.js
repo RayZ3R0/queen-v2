@@ -14,14 +14,20 @@ const MOD_CHANNEL_ID = "965509744859185262";
 const APPEAL_CHANNEL_ID = "970640479463022613";
 const MOD_ROLE_ID = "920210140093902868";
 const DEBUG_CHANNEL_ID = "1009408632317804544";
-const DEBUG_ENABLED = false; // Set to true to enable debug logging
+const DEBUG_CONSOLE = true; // Set to true to enable console debug logging
+const DEBUG_CHANNEL = false; // Set to true to enable Discord channel debug logging
 
 // Debug function
 async function sendDebug(message, data = {}) {
-  if (!DEBUG_ENABLED) return; // Skip if debugging is disabled
-  
   const debugMsg = `[BLACKLIST DEBUG] ${message}`;
-  console.log(debugMsg, data);
+  
+  // Console logging
+  if (DEBUG_CONSOLE) {
+    console.log(debugMsg, data);
+  }
+  
+  // Discord channel logging
+  if (!DEBUG_CHANNEL) return;
   
   try {
     const debugChannel = client.channels.cache.get(DEBUG_CHANNEL_ID);
@@ -421,7 +427,7 @@ async function handleViolation(message, violations) {
       }
 
       await modChannel.send({
-        content: `<@&${MOD_ROLE_ID}>`,
+        // content: `<@&${MOD_ROLE_ID}>`,
         embeds: [modEmbed],
       });
 

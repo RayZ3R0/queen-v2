@@ -89,4 +89,24 @@ export class Logger {
       `[*] Startup Time: ${duration}s`,
     ]);
   }
+
+  static debug(message) {
+    console.log(`[DEBUG] ${message}`);
+  }
+
+  static info(message) {
+    console.log(`[INFO] ${message}`);
+  }
+
+  static warn(message) {
+    console.warn(`[WARN] ${message}`);
+  }
+
+  static error(message, error = null) {
+    if (error) {
+      console.error(`[ERROR] ${message}:`, error);
+    } else {
+      console.error(`[ERROR] ${message}`);
+    }
+  }
 }
