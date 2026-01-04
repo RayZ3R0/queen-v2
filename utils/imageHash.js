@@ -82,6 +82,9 @@ export async function calculatePerceptualHash(input) {
 export function hammingDistance(hash1, hash2) {
   if (!hash1 || !hash2) return 256;
   
+  // If hashes are different lengths, they're incompatible (old vs new format)
+  if (hash1.length !== hash2.length) return 256;
+  
   // For 16x16 hashes (256 bits split into 4 chunks of 64 bits)
   let distance = 0;
   
@@ -89,6 +92,9 @@ export function hammingDistance(hash1, hash2) {
   for (let i = 0; i < hash1.length; i += 16) {
     const chunk1 = hash1.substring(i, i + 16);
     const chunk2 = hash2.substring(i, i + 16);
+    
+    // Skip empty chunks (shouldn't happen with proper length check, but safety)
+    if (!chunk1 || !chunk2) continue;
     
     const num1 = BigInt("0x" + chunk1);
     const num2 = BigInt("0x" + chunk2);
