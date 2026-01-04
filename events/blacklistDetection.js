@@ -15,7 +15,7 @@ const MOD_CHANNEL_ID = "965509744859185262";
 const APPEAL_CHANNEL_ID = "970640479463022613";
 const MOD_ROLE_ID = "920210140093902868";
 const DEBUG_CHANNEL_ID = "1009408632317804544";
-const DEBUG_CONSOLE = true; // Set to true to enable console debug logging
+const DEBUG_CONSOLE = false; // Set to true to enable console debug logging
 const DEBUG_CHANNEL = false; // Set to true to enable Discord channel debug logging
 
 // Debug function
