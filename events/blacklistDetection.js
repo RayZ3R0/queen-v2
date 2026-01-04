@@ -213,7 +213,7 @@ async function checkBlacklist(message) {
               messageHash: hash,
               blacklistHash: entry.content,
               hammingDistance: distance,
-              threshold: 5,
+              threshold: 15,
               similar: similar,
             });
 
@@ -265,7 +265,7 @@ async function checkBlacklist(message) {
             messageHash: hash,
             blacklistHash: entry.content,
             hammingDistance: distance,
-            threshold: 5,
+            threshold: 15,
             similar: similar,
           });
 

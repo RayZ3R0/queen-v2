@@ -4,6 +4,7 @@ import axios from "axios";
 /**
  * Calculate perceptual hash (pHash) for an image
  * This creates a fingerprint that can detect similar images even if they're modified
+ * Uses 16x16 resolution for better resistance to compression
  * @param {Buffer|string} input - Image buffer or URL
  * @returns {Promise<string>} - Perceptual hash as hex string
  */
@@ -31,9 +32,10 @@ export async function calculatePerceptualHash(input) {
       imageBuffer = input;
     }
 
-    // Resize to 8x8 grayscale image (standard for pHash)
+    // Resize to 16x16 grayscale image (larger for better Discord compression resistance)
+    const size = 16;
     const resized = await sharp(imageBuffer)
-      .resize(8, 8, {
+      .resize(size, size, {
         fit: "fill",
         kernel: sharp.kernel.nearest,
       })
@@ -49,15 +51,21 @@ export async function calculatePerceptualHash(input) {
     const average = sum / resized.length;
 
     // Create hash based on whether each pixel is above or below average
-    let hash = 0n;
-    for (let i = 0; i < resized.length; i++) {
-      if (resized[i] > average) {
-        hash |= 1n << BigInt(i);
+    // Split into chunks since we need 256 bits
+    const chunks = [];
+    for (let chunk = 0; chunk < 4; chunk++) {
+      let hash = 0n;
+      for (let i = 0; i < 64; i++) {
+        const idx = chunk * 64 + i;
+        if (resized[idx] > average) {
+          hash |= 1n << BigInt(i);
+        }
       }
+      chunks.push(hash.toString(16).padStart(16, "0"));
     }
 
-    // Convert to hex string
-    return hash.toString(16).padStart(16, "0");
+    // Combine all chunks into one hex string
+    return chunks.join("");
   } catch (error) {
     console.error("Error calculating perceptual hash:", error);
     throw error;
@@ -69,21 +77,29 @@ export async function calculatePerceptualHash(input) {
  * Lower distance = more similar images
  * @param {string} hash1 - First hash (hex string)
  * @param {string} hash2 - Second hash (hex string)
- * @returns {number} - Hamming distance (0-64, lower is more similar)
+ * @returns {number} - Hamming distance (0-256 for 16x16, lower is more similar)
  */
 export function hammingDistance(hash1, hash2) {
-  if (!hash1 || !hash2) return 64;
-
-  const num1 = BigInt("0x" + hash1);
-  const num2 = BigInt("0x" + hash2);
-  const xor = num1 ^ num2;
-
-  // Count number of 1s in XOR result
+  if (!hash1 || !hash2) return 256;
+  
+  // For 16x16 hashes (256 bits split into 4 chunks of 64 bits)
   let distance = 0;
-  let n = xor;
-  while (n > 0n) {
-    distance++;
-    n &= n - 1n;
+  
+  // Process in 16-character chunks (64 bits each)
+  for (let i = 0; i < hash1.length; i += 16) {
+    const chunk1 = hash1.substring(i, i + 16);
+    const chunk2 = hash2.substring(i, i + 16);
+    
+    const num1 = BigInt("0x" + chunk1);
+    const num2 = BigInt("0x" + chunk2);
+    const xor = num1 ^ num2;
+
+    // Count number of 1s in XOR result
+    let n = xor;
+    while (n > 0n) {
+      distance++;
+      n &= n - 1n;
+    }
   }
 
   return distance;
@@ -93,10 +109,10 @@ export function hammingDistance(hash1, hash2) {
  * Check if two images are similar based on their perceptual hashes
  * @param {string} hash1 - First hash
  * @param {string} hash2 - Second hash
- * @param {number} threshold - Maximum hamming distance to consider a match (default: 5)
+ * @param {number} threshold - Maximum hamming distance to consider a match (default: 15 for 16x16)
  * @returns {boolean} - True if images are similar
  */
-export function areImagesSimilar(hash1, hash2, threshold = 5) {
+export function areImagesSimilar(hash1, hash2, threshold = 15) {
   const distance = hammingDistance(hash1, hash2);
   return distance <= threshold;
 }
