@@ -462,10 +462,6 @@ client.on("messageCreate", async (message) => {
 
     await sendDebug("Processing message for blacklist check", {
       author: message.author.tag,
-    await sendDebug("ERROR in main event handler", {
-      error: error.message,
-      stack: error.stack,
-    });
       authorId: message.author.id,
       channelId: message.channel.id,
       guildId: message.guild.id,
@@ -481,6 +477,10 @@ client.on("messageCreate", async (message) => {
     }
   } catch (error) {
     console.error("Error in blacklist detection:", error);
+    await sendDebug("ERROR in main event handler", {
+      error: error.message,
+      stack: error.stack,
+    });
   }
 });
 
