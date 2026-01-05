@@ -32,6 +32,9 @@ client.on("interactionCreate", async (interaction) => {
   try {
     if (!interaction.isButton()) return;
 
+    // Ignore honeypot verification buttons
+    if (interaction.customId.startsWith("honeypot_verify_")) return;
+
     const member = interaction.guild.members.cache.get(interaction.user.id);
     if (!member) return;
 

@@ -3,6 +3,9 @@ import clickBtn from "../utils/clickBtn.js";
 
 client.on("interactionCreate", async (interaction) => {
   try {
+    // Ignore honeypot verification buttons
+    if (interaction.isButton() && interaction.customId.startsWith("honeypot_verify_")) return;
+    
     await clickBtn(interaction, {
       embedDesc:
         "Your ticket has been created. Please ask away, we will try our best to help you.",

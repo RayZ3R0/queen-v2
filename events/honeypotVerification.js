@@ -16,6 +16,11 @@ client.on("interactionCreate", async (interaction) => {
     // Only handle honeypot verification buttons
     if (!interaction.customId.startsWith("honeypot_verify_")) return;
 
+    // Defer reply immediately to prevent other handlers from intercepting
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.deferUpdate().catch(() => {});
+    }
+
     // Parse button data: honeypot_verify_{violationId}_{color}
     const parts = interaction.customId.split("_");
     if (parts.length !== 4) return;
@@ -29,10 +34,9 @@ client.on("interactionCreate", async (interaction) => {
     const lastClick = clickCooldowns.get(cooldownKey);
 
     if (lastClick && now - lastClick < COOLDOWN_DURATION) {
-      await interaction.reply({
+      await interaction.editReply({
         content: "⏳ Please wait a moment before trying again.",
-        ephemeral: true,
-      });
+      }).catch(() => {});
       return;
     }
 
@@ -42,19 +46,17 @@ client.on("interactionCreate", async (interaction) => {
     const violation = await HoneypotViolation.findById(violationId);
 
     if (!violation) {
-      await interaction.reply({
+      await interaction.editReply({
         content: "❌ Verification session not found or already completed.",
-        ephemeral: true,
-      });
+      }).catch(() => {});
       return;
     }
 
     // Check if already verified
     if (violation.verified) {
-      await interaction.reply({
+      await interaction.editReply({
         content: "✅ You have already been verified and unmuted.",
-        ephemeral: true,
-      });
+      }).catch(() => {});
       return;
     }
 
@@ -95,10 +97,10 @@ client.on("interactionCreate", async (interaction) => {
         )
         .setTimestamp();
 
-      await interaction.update({
+      await interaction.editReply({
         embeds: [successEmbed],
         components: [], // Remove buttons
-      });
+      }).catch(() => {});
     } else {
       // Wrong button clicked
       console.log(`[HONEYPOT] User ${interaction.user.tag} clicked wrong button (${clickedColor} instead of ${violation.correctButton})`);
@@ -112,19 +114,28 @@ client.on("interactionCreate", async (interaction) => {
         )
         .setTimestamp();
 
-      await interaction.update({
+      await interaction.editReply({
         embeds: [failEmbed],
         components: [], // Remove buttons
-      });
+      }).catch(() => {});
     }
   } catch (error) {
     console.error("[HONEYPOT] Error in verification handler:", error);
-    await interaction
-      .reply({
-        content: "❌ An error occurred during verification. Please contact a moderator.",
-        ephemeral: true,
-      })
-      .catch(console.error);
+    // Try to send error message, but don't fail if interaction already handled
+    try {
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({
+          content: "❌ An error occurred during verification. Please contact a moderator.",
+          ephemeral: true,
+        });
+      } else {
+        await interaction.editReply({
+          content: "❌ An error occurred during verification. Please contact a moderator.",
+        });
+      }
+    } catch (replyError) {
+      // Silently fail if we can't reply
+    }
   }
 });
 
