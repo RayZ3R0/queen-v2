@@ -606,28 +606,26 @@ async function handleScan(interaction) {
     )
     .setTimestamp();
 
-  // Add details about duplicates and invalid invites if any
-  if (duplicateInvites.length > 0) {
-    const duplicateList = duplicateInvites
-      .slice(0, 5)
-      .map(d => `[\`${d.code}\`](${d.url})`)
+  // Show all invalid invites (priority), limit duplicates to 3
+  if (invalidInvites.length > 0) {
+    const invalidList = invalidInvites
+      .map(i => `[\`${i.code}\`](${i.url})`)
       .join("\n");
-    const moreText = duplicateInvites.length > 5 ? `\n*...and ${duplicateInvites.length - 5} more*` : "";
     resultEmbed.addFields({
-      name: `🔄 Duplicates (${duplicateInvites.length})`,
-      value: duplicateList + moreText,
+      name: `❌ Invalid/Expired (${invalidInvites.length})`,
+      value: invalidList.length > 1024 ? invalidList.substring(0, 1021) + "..." : invalidList,
     });
   }
 
-  if (invalidInvites.length > 0) {
-    const invalidList = invalidInvites
-      .slice(0, 5)
-      .map(i => `[\`${i.code}\`](${i.url})`)
+  if (duplicateInvites.length > 0) {
+    const duplicateList = duplicateInvites
+      .slice(0, 3)
+      .map(d => `[\`${d.code}\`](${d.url})`)
       .join("\n");
-    const moreText = invalidInvites.length > 5 ? `\n*...and ${invalidInvites.length - 5} more*` : "";
+    const moreText = duplicateInvites.length > 3 ? `\n*...and ${duplicateInvites.length - 3} more*` : "";
     resultEmbed.addFields({
-      name: `❌ Invalid/Expired (${invalidInvites.length})`,
-      value: invalidList + moreText,
+      name: `🔄 Duplicates (${duplicateInvites.length})`,
+      value: duplicateList + moreText,
     });
   }
 
