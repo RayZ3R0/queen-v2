@@ -16,7 +16,7 @@ import {
 } from "../../../utils/partnershipUtils.js";
 
 const REQUIRED_ROLE_ID = "920210140093902868";
-const PARTNERSHIP_CHANNEL_ID = "1328997755829088297"; // Replace with your partnership channel ID
+const PARTNERSHIP_CHANNEL_ID = "912179889191395388"; // Replace with your partnership channel ID
 const NOTIFICATION_CHANNEL_ID = "965509744859185262";
 
 export default {
