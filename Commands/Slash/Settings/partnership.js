@@ -88,7 +88,7 @@ export default {
         )
     ),
 
-  async execute(interaction) {
+  async run(interaction) {
     // Check permissions
     if (!hasPartnershipPermission(interaction.member, REQUIRED_ROLE_ID)) {
       return interaction.reply({

@@ -4,7 +4,7 @@ const partnershipSchema = new mongoose.Schema({
   inviteCode: {
     type: String,
     required: true,
-    unique: true,
+    unique: true, // This creates an index automatically, so we don't need partnershipSchema.index({ inviteCode: 1 })
   },
   inviteUrl: {
     type: String,
@@ -52,7 +52,7 @@ const partnershipSchema = new mongoose.Schema({
   notes: String,
 });
 
-partnershipSchema.index({ inviteCode: 1 });
+// Indexes (inviteCode already indexed via unique: true)
 partnershipSchema.index({ guildId: 1 });
 partnershipSchema.index({ status: 1 });
 partnershipSchema.index({ addedAt: -1 });
