@@ -115,12 +115,19 @@ export class InviteTracker {
       const oldCache = this.inviteCache.get(guild.id) || new Map();
       const newInvites = await guild.invites.fetch();
       
+      console.log(`🔍 Comparing invites: ${oldCache.size} cached, ${newInvites.size} current`);
+      
       // Check regular invites
       for (const [code, newInvite] of newInvites) {
         const oldInvite = oldCache.get(code);
         
+        if (oldInvite) {
+          console.log(`  Checking ${code}: old=${oldInvite.uses}, new=${newInvite.uses}`);
+        }
+        
         if (oldInvite && newInvite.uses > oldInvite.uses) {
           // This invite was used!
+          console.log(`✅ Found used invite: ${code} by ${newInvite.inviter?.tag}`);
           return {
             code: newInvite.code,
             inviterId: newInvite.inviter?.id || null,
@@ -170,8 +177,11 @@ export class InviteTracker {
     if (member.user.bot) return;
 
     try {
+      console.log(`🔎 Processing join for ${member.user.tag}...`);
+      
       // Find which invite was used
       const usedInvite = await this.findUsedInvite(member.guild);
+      console.log(`📋 Used invite: ${usedInvite.code} (${usedInvite.type}), inviter: ${usedInvite.inviterId || 'unknown'}`);
       
       // Recache invites
       await this.cacheInvites(member.guild);
@@ -180,6 +190,8 @@ export class InviteTracker {
       const accountAge = Date.now() - member.user.createdTimestamp;
       const accountAgeDays = accountAge / (1000 * 60 * 60 * 24);
       const isFake = accountAgeDays < FAKE_ACCOUNT_THRESHOLD_DAYS;
+
+      console.log(`📊 Account age: ${Math.floor(accountAgeDays)} days, isFake: ${isFake}`);
 
       // Save usage record
       await InviteUsage.create({
@@ -193,6 +205,8 @@ export class InviteTracker {
         accountCreatedAt: new Date(member.user.createdTimestamp),
         accountAgeDays: Math.floor(accountAgeDays),
       });
+      
+      console.log(`💾 Saved invite usage record to database`);
 
       // Update inviter stats
       if (usedInvite.inviterId) {
@@ -206,6 +220,8 @@ export class InviteTracker {
           },
           { upsert: true, new: true }
         );
+        
+        console.log(`📈 Updated stats for inviter ${usedInvite.inviterId}: ${isFake ? 'fake' : 'regular'} +1`);
 
         // Log to channel
         await this.logInvite(member, usedInvite, stats, isFake);
@@ -264,9 +280,17 @@ export class InviteTracker {
    */
   async logInvite(member, invite, stats, isFake) {
     try {
+      console.log(`📝 Attempting to log invite to channel ${INVITE_LOGS_CHANNEL_ID}...`);
+      
       const { EmbedBuilder } = await import("discord.js");
       const channel = this.client.channels.cache.get(INVITE_LOGS_CHANNEL_ID);
-      if (!channel) return;
+      
+      if (!channel) {
+        console.error(`❌ Could not find invite logs channel: ${INVITE_LOGS_CHANNEL_ID}`);
+        return;
+      }
+      
+      console.log(`✅ Found channel: ${channel.name}`);
 
       let inviterText = "Unknown";
       let inviterMention = "Unknown";
@@ -310,6 +334,7 @@ export class InviteTracker {
       }
 
       await channel.send({ embeds: [embed] });
+      console.log(`✅ Successfully logged invite to channel`);
     } catch (error) {
       console.error("Error logging invite:", error);
     }
