@@ -38,7 +38,20 @@ export class InviteTracker {
       const invites = await guild.invites.fetch();
       const guildCache = new Map();
 
-      // Cache regular invites
+      // Load existing cache from database first
+      const dbCache = await InviteCache.find({ guildId: guild.id });
+      for (const cached of dbCache) {
+        guildCache.set(cached.code, {
+          code: cached.code,
+          uses: cached.uses,
+          inviterId: cached.inviterId,
+          maxUses: cached.maxUses,
+          expiresAt: cached.expiresAt,
+          isVanity: cached.isVanity,
+        });
+      }
+
+      // Update with current invites
       for (const [code, invite] of invites) {
         const inviteData = {
           code: invite.code,
@@ -116,6 +129,24 @@ export class InviteTracker {
       const newInvites = await guild.invites.fetch();
       
       console.log(`🔍 Comparing invites: ${oldCache.size} cached, ${newInvites.size} current`);
+      
+      if (oldCache.size === 0) {
+        console.warn(`⚠️ No cached invites! Loading from database...`);
+        // Try to load from database as fallback
+        const dbCache = await InviteCache.find({ guildId: guild.id });
+        console.log(`📦 Found ${dbCache.length} invites in database`);
+        
+        for (const cached of dbCache) {
+          oldCache.set(cached.code, {
+            code: cached.code,
+            uses: cached.uses,
+            inviterId: cached.inviterId,
+            maxUses: cached.maxUses,
+          });
+        }
+        
+        console.log(`🔄 Restored ${oldCache.size} invites from database cache`);
+      }
       
       // Check regular invites
       for (const [code, newInvite] of newInvites) {
