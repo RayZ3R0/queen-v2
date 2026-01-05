@@ -87,13 +87,16 @@ export default {
             .setRequired(true)
         )
     ),
+  category: "Settings",
+  botPermissions: ["SendMessages", "EmbedLinks", "ManageMessages"],
+  memberPermissions: [],
 
-  async run(interaction) {
+  async run({ client, interaction }) {
     // Check permissions
     if (!hasPartnershipPermission(interaction.member, REQUIRED_ROLE_ID)) {
       return interaction.reply({
         content: "❌ You don't have permission to use this command.",
-        ephemeral: true,
+        flags: 64, // EPHEMERAL flag
       });
     }
 
@@ -123,7 +126,7 @@ export default {
 };
 
 async function handleAdd(interaction) {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: 64 });
 
   const inviteInput = interaction.options.getString("invite");
   const inviteCode = extractInviteCode(inviteInput);
@@ -203,7 +206,7 @@ async function handleAdd(interaction) {
 }
 
 async function handleRemove(interaction) {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: 64 });
 
   const inviteInput = interaction.options.getString("invite");
   const inviteCode = extractInviteCode(inviteInput);
@@ -245,7 +248,7 @@ async function handleRemove(interaction) {
 }
 
 async function handleList(interaction) {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: 64 });
 
   const statusFilter = interaction.options.getString("status") || "active";
   
@@ -285,7 +288,7 @@ async function handleList(interaction) {
 }
 
 async function handleCheck(interaction) {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: 64 });
 
   const partnerships = await Partnership.find({ status: { $ne: "expired" } });
   
@@ -365,7 +368,7 @@ async function handleCheck(interaction) {
 }
 
 async function handleScan(interaction) {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: 64 });
 
   const channelId = interaction.options.getString("channel") || PARTNERSHIP_CHANNEL_ID;
   const channel = interaction.client.channels.cache.get(channelId);
@@ -476,7 +479,7 @@ async function handleScan(interaction) {
 }
 
 async function handleRefresh(interaction) {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: 64 });
 
   const inviteInput = interaction.options.getString("invite");
   const inviteCode = extractInviteCode(inviteInput);
