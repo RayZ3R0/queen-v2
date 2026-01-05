@@ -19,6 +19,21 @@ const REQUIRED_ROLE_ID = "920210140093902868";
 const PARTNERSHIP_CHANNEL_ID = "912179889191395388"; // Replace with your partnership channel ID
 const NOTIFICATION_CHANNEL_ID = "965509744859185262";
 
+/**
+ * Create a visual progress bar
+ * @param {number} current - Current progress
+ * @param {number} total - Total items
+ * @returns {string} Progress bar string
+ */
+function createProgressBar(current, total, length = 10) {
+  const percentage = current / total;
+  const filled = Math.round(length * percentage);
+  const empty = length - filled;
+  const filledBar = "█".repeat(filled);
+  const emptyBar = "░".repeat(empty);
+  return `${filledBar}${emptyBar}`;
+}
+
 export default {
   data: new SlashCommandBuilder()
     .setName("partnership")
@@ -259,32 +274,121 @@ async function handleList(interaction) {
     return interaction.editReply(`No partnerships found with status: **${statusFilter}**`);
   }
 
-  const embed = new EmbedBuilder()
-    .setColor("#5865F2")
-    .setTitle(`📋 Partnerships (${statusFilter})`)
-    .setDescription(`Total: ${partnerships.length}`)
-    .setTimestamp();
-
-  // Split into chunks if too many
+  // Split into chunks of 10
   const chunks = [];
   for (let i = 0; i < partnerships.length; i += 10) {
     chunks.push(partnerships.slice(i, i + 10));
   }
 
-  const currentChunk = chunks[0];
-  currentChunk.forEach((p) => {
-    const statusEmoji = p.status === "active" ? "✅" : p.status === "expired" ? "❌" : "⚠️";
-    embed.addFields({
-      name: `${statusEmoji} ${p.guildName}`,
-      value: `Code: \`${p.inviteCode}\` | Members: ${p.memberCount || "?"} | Added by: ${p.addedBy}\nAdded: <t:${Math.floor(p.addedAt.getTime() / 1000)}:R>`,
+  let currentPage = 0;
+
+  const generateEmbed = (page) => {
+    const embed = new EmbedBuilder()
+      .setColor("#5865F2")
+      .setTitle(`📋 Partnerships (${statusFilter})`)
+      .setDescription(`Total: ${partnerships.length}`)
+      .setTimestamp();
+
+    chunks[page].forEach((p) => {
+      const statusEmoji = p.status === "active" ? "✅" : p.status === "expired" ? "❌" : "⚠️";
+      embed.addFields({
+        name: `${statusEmoji} ${p.guildName}`,
+        value: `Code: \`${p.inviteCode}\` | Members: ${p.memberCount || "?"} | Added by: ${p.addedBy}\nAdded: <t:${Math.floor(p.addedAt.getTime() / 1000)}:R>`,
+      });
+    });
+
+    if (chunks.length > 1) {
+      embed.setFooter({ text: `Page ${page + 1}/${chunks.length} • ${partnerships.length} total partnerships` });
+    }
+
+    return embed;
+  };
+
+  const generateButtons = (page) => {
+    const row = new ActionRowBuilder();
+    
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId("first")
+        .setEmoji("⏮️")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(page === 0),
+      new ButtonBuilder()
+        .setCustomId("prev")
+        .setEmoji("◀️")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(page === 0),
+      new ButtonBuilder()
+        .setCustomId("next")
+        .setEmoji("▶️")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(page === chunks.length - 1),
+      new ButtonBuilder()
+        .setCustomId("last")
+        .setEmoji("⏭️")
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(page === chunks.length - 1)
+    );
+
+    return row;
+  };
+
+  // Send initial message with buttons if multiple pages
+  const messageOptions = { embeds: [generateEmbed(currentPage)] };
+  if (chunks.length > 1) {
+    messageOptions.components = [generateButtons(currentPage)];
+  }
+
+  const message = await interaction.editReply(messageOptions);
+
+  // If only one page, no need for collector
+  if (chunks.length === 1) return;
+
+  // Create button collector
+  const collector = message.createMessageComponentCollector({
+    time: 5 * 60 * 1000, // 5 minutes
+  });
+
+  collector.on("collect", async (i) => {
+    // Check if the button clicker is the command user
+    if (i.user.id !== interaction.user.id) {
+      return i.reply({
+        content: "❌ Only the command user can use these buttons.",
+        flags: 64,
+      });
+    }
+
+    switch (i.customId) {
+      case "first":
+        currentPage = 0;
+        break;
+      case "prev":
+        currentPage = Math.max(0, currentPage - 1);
+        break;
+      case "next":
+        currentPage = Math.min(chunks.length - 1, currentPage + 1);
+        break;
+      case "last":
+        currentPage = chunks.length - 1;
+        break;
+    }
+
+    await i.update({
+      embeds: [generateEmbed(currentPage)],
+      components: [generateButtons(currentPage)],
     });
   });
 
-  if (chunks.length > 1) {
-    embed.setFooter({ text: `Page 1/${chunks.length} • Use buttons to navigate` });
-  }
-
-  await interaction.editReply({ embeds: [embed] });
+  collector.on("end", async () => {
+    // Disable all buttons when collector ends
+    try {
+      await interaction.editReply({
+        components: [],
+      });
+    } catch (error) {
+      // Message might have been deleted
+    }
+  });
 }
 
 async function handleCheck(interaction) {
@@ -385,7 +489,9 @@ async function handleScan(interaction) {
   let invitesSkipped = 0;
   let lastId;
 
-  const allInviteCodes = new Set();
+  const allInviteCodes = new Map(); // Map invite code to message URL
+  const duplicateInvites = [];
+  const invalidInvites = [];
 
   // Fetch all messages in batches
   while (true) {
@@ -401,14 +507,22 @@ async function handleScan(interaction) {
     // Extract invites from messages
     for (const message of messages.values()) {
       const invites = extractAllInvites(message.content);
-      invites.forEach((code) => allInviteCodes.add(code));
+      invites.forEach((code) => {
+        if (!allInviteCodes.has(code)) {
+          allInviteCodes.set(code, message.url);
+        }
+      });
 
       // Check embeds for invites
       if (message.embeds.length > 0) {
         message.embeds.forEach((embed) => {
           if (embed.description) {
             const embedInvites = extractAllInvites(embed.description);
-            embedInvites.forEach((code) => allInviteCodes.add(code));
+            embedInvites.forEach((code) => {
+              if (!allInviteCodes.has(code)) {
+                allInviteCodes.set(code, message.url);
+              }
+            });
           }
         });
       }
@@ -429,11 +543,27 @@ async function handleScan(interaction) {
     `🔍 Scanned ${totalMessages} messages, found ${invitesFound} unique invites. Processing...`
   );
 
-  for (const inviteCode of allInviteCodes) {
+  let processedCount = 0;
+  const inviteArray = Array.from(allInviteCodes.entries());
+
+  for (const [inviteCode, messageUrl] of inviteArray) {
+    processedCount++;
+    
+    // Show progress every 5 invites or on significant milestones
+    if (processedCount % 5 === 0 || processedCount === 1 || processedCount === inviteArray.length) {
+      const progressBar = createProgressBar(processedCount, inviteArray.length);
+      const percentage = Math.round((processedCount / inviteArray.length) * 100);
+      await interaction.editReply(
+        `🔍 **Processing Invites** ${progressBar} ${percentage}%\n` +
+        `Progress: ${processedCount}/${inviteArray.length} | ✅ Added: ${invitesAdded} | ⏭️ Skipped: ${invitesSkipped}`
+      );
+    }
+
     // Check if already in database
     const existing = await Partnership.findOne({ inviteCode });
     if (existing) {
       invitesSkipped++;
+      duplicateInvites.push({ code: inviteCode, url: messageUrl, reason: "Already in database" });
       continue;
     }
 
@@ -441,6 +571,7 @@ async function handleScan(interaction) {
     const inviteData = await validateInvite(interaction.client, inviteCode);
     if (!inviteData) {
       invitesSkipped++;
+      invalidInvites.push({ code: inviteCode, url: messageUrl, reason: "Expired or invalid" });
       continue;
     }
 
@@ -474,6 +605,31 @@ async function handleScan(interaction) {
       `**Messages Scanned:** ${totalMessages}\n**Invites Found:** ${invitesFound}\n**Added to Database:** ${invitesAdded}\n**Skipped (duplicate/invalid):** ${invitesSkipped}`
     )
     .setTimestamp();
+
+  // Add details about duplicates and invalid invites if any
+  if (duplicateInvites.length > 0) {
+    const duplicateList = duplicateInvites
+      .slice(0, 5)
+      .map(d => `[\`${d.code}\`](${d.url})`)
+      .join("\n");
+    const moreText = duplicateInvites.length > 5 ? `\n*...and ${duplicateInvites.length - 5} more*` : "";
+    resultEmbed.addFields({
+      name: `🔄 Duplicates (${duplicateInvites.length})`,
+      value: duplicateList + moreText,
+    });
+  }
+
+  if (invalidInvites.length > 0) {
+    const invalidList = invalidInvites
+      .slice(0, 5)
+      .map(i => `[\`${i.code}\`](${i.url})`)
+      .join("\n");
+    const moreText = invalidInvites.length > 5 ? `\n*...and ${invalidInvites.length - 5} more*` : "";
+    resultEmbed.addFields({
+      name: `❌ Invalid/Expired (${invalidInvites.length})`,
+      value: invalidList + moreText,
+    });
+  }
 
   await interaction.editReply({ embeds: [resultEmbed] });
 }
