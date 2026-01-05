@@ -1,7 +1,7 @@
 import { EmbedBuilder } from "discord.js";
 import { client } from "../bot.js";
 import Partnership from "../schema/partnerships.js";
-import { validateInvite } from "../utils/partnershipUtils.js";
+import { validateInvite, extractInviteCode, createPartnershipEmbed } from "../utils/partnershipUtils.js";
 import winston from "winston";
 
 const logger = winston.createLogger({
@@ -15,7 +15,75 @@ const logger = winston.createLogger({
 });
 
 const NOTIFICATION_CHANNEL_ID = "965509744859185262";
+const PARTNERSHIP_CHANNEL_ID = "912179889191395388";
 const CHECK_INTERVAL = 12 * 60 * 60 * 1000; // 12 hours in milliseconds
+
+// Listen for messages in partnership channel
+client.on("messageCreate", async (message) => {
+  // Ignore bots and check if it's the partnership channel
+  if (message.author.bot || message.channelId !== PARTNERSHIP_CHANNEL_ID) return;
+
+  try {
+    const inviteCode = extractInviteCode(message.content);
+    
+    if (!inviteCode) {
+      logger.info(`No invite code found in message ${message.id} from ${message.author.tag}`);
+      return;
+    }
+
+    logger.info(`Found invite code ${inviteCode} in partnership channel from ${message.author.tag}`);
+
+    // Check if already exists
+    const existing = await Partnership.findOne({ inviteCode });
+    if (existing) {
+      logger.info(`Partnership ${inviteCode} already exists, skipping.`);
+      return;
+    }
+
+    // Validate the invite
+    const inviteData = await validateInvite(client, inviteCode);
+    
+    if (!inviteData) {
+      logger.warn(`Invalid invite ${inviteCode} from ${message.author.tag}`);
+      return;
+    }
+
+    // Skip if it's the server's own invite
+    if (inviteData.guild.id === message.guild.id) {
+      logger.info(`Skipping ${inviteCode} - it's the server's own invite`);
+      return;
+    }
+
+    // Create partnership record
+    const partnership = await Partnership.create({
+      inviteCode: inviteCode,
+      inviteUrl: `https://discord.gg/${inviteCode}`,
+      guildId: inviteData.guild.id,
+      guildName: inviteData.guild.name,
+      guildIcon: inviteData.guild.icon,
+      memberCount: inviteData.guild.memberCount || 0,
+      description: inviteData.guild.description || null,
+      addedBy: message.author.tag,
+      addedById: message.author.id,
+      addedAt: new Date(),
+      lastChecked: new Date(),
+      status: "active",
+      consecutiveFailures: 0,
+      messageId: message.id,
+      channelId: message.channelId,
+      expiresAt: inviteData.expiresAt || null,
+      notes: `Auto-added from partnership channel message`,
+    });
+
+    logger.info(`✅ Auto-added partnership: ${inviteData.guild.name} (${inviteCode}) from ${message.author.tag}`);
+    
+    // React to the message to confirm
+    await message.react("✅").catch(() => {});
+    
+  } catch (error) {
+    logger.error(`Error processing partnership message: ${error.message}`);
+  }
+});
 
 /**
  * Check all partnerships for validity

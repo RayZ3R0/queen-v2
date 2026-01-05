@@ -489,7 +489,7 @@ async function handleScan(interaction) {
   let invitesSkipped = 0;
   let lastId;
 
-  const allInviteCodes = new Map(); // Map invite code to message URL
+  const allInviteCodes = new Map(); // Map invite code to {messageUrl, author, authorId, messageId}
   const duplicateInvites = [];
   const invalidInvites = [];
 
@@ -509,7 +509,12 @@ async function handleScan(interaction) {
       const invites = extractAllInvites(message.content);
       invites.forEach((code) => {
         if (!allInviteCodes.has(code)) {
-          allInviteCodes.set(code, message.url);
+          allInviteCodes.set(code, {
+            messageUrl: message.url,
+            author: message.author.tag,
+            authorId: message.author.id,
+            messageId: message.id,
+          });
         }
       });
 
@@ -520,7 +525,12 @@ async function handleScan(interaction) {
             const embedInvites = extractAllInvites(embed.description);
             embedInvites.forEach((code) => {
               if (!allInviteCodes.has(code)) {
-                allInviteCodes.set(code, message.url);
+                allInviteCodes.set(code, {
+                  messageUrl: message.url,
+                  author: message.author.tag,
+                  authorId: message.author.id,
+                  messageId: message.id,
+                });
               }
             });
           }
@@ -546,7 +556,7 @@ async function handleScan(interaction) {
   let processedCount = 0;
   const inviteArray = Array.from(allInviteCodes.entries());
 
-  for (const [inviteCode, messageUrl] of inviteArray) {
+  for (const [inviteCode, messageData] of inviteArray) {
     processedCount++;
     
     // Show progress every 5 invites or on significant milestones
@@ -563,7 +573,7 @@ async function handleScan(interaction) {
     const existing = await Partnership.findOne({ inviteCode });
     if (existing) {
       invitesSkipped++;
-      duplicateInvites.push({ code: inviteCode, url: messageUrl, reason: "Already in database" });
+      duplicateInvites.push({ code: inviteCode, url: messageData.messageUrl, reason: "Already in database" });
       continue;
     }
 
@@ -571,7 +581,13 @@ async function handleScan(interaction) {
     const inviteData = await validateInvite(interaction.client, inviteCode);
     if (!inviteData) {
       invitesSkipped++;
-      invalidInvites.push({ code: inviteCode, url: messageUrl, reason: "Expired or invalid" });
+      invalidInvites.push({ code: inviteCode, url: messageData.messageUrl, reason: "Expired or invalid" });
+      continue;
+    }
+
+    // Skip if it's the server's own invite
+    if (inviteData.guildId === interaction.guild.id) {
+      invitesSkipped++;
       continue;
     }
 
@@ -584,11 +600,13 @@ async function handleScan(interaction) {
       guildIcon: inviteData.guildIcon,
       memberCount: inviteData.memberCount,
       description: inviteData.description,
-      addedBy: "Scanned Import",
-      addedById: interaction.user.id,
+      addedBy: messageData.author,
+      addedById: messageData.authorId,
       addedAt: new Date(),
       lastChecked: new Date(),
       expiresAt: inviteData.expiresAt,
+      messageId: messageData.messageId,
+      channelId: channelId,
       notes: `Imported from channel scan on ${new Date().toLocaleDateString()}`,
     });
 
