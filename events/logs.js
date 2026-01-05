@@ -6,9 +6,14 @@ import {
   WebhookClient,
   ChannelType,
   AttachmentBuilder,
+  AuditLogEvent,
 } from "discord.js";
 import chalk from "chalk";
 import winston from "winston";
+import axios from "axios";
+import archiver from "archiver";
+import { createWriteStream, promises as fs } from "fs";
+import { join } from "path";
 import { client } from "../bot.js"; // Ensure your bot.js exports your initialized client
 
 // --------------------- Logger Setup --------------------- //
@@ -277,61 +282,174 @@ client.on("guildUpdate", async (oldGuild, newGuild) => {
 // --------------------- Event: Message Delete --------------------- //
 client.on("messageDelete", async (message) => {
   try {
+    // Filter: Skip if no author (partial), bot messages, or DMs
+    if (!message.author || message.author.bot || message.channel.type === ChannelType.DM) return;
+    
     const logChannel = client.channels.cache.get("901841617449799680");
     if (!logChannel) return;
 
+    const messageAge = Date.now() - message.createdTimestamp;
+    const ageString = messageAge < 60000 
+      ? `${Math.floor(messageAge / 1000)}s ago`
+      : messageAge < 3600000
+      ? `${Math.floor(messageAge / 60000)}m ago`
+      : `${Math.floor(messageAge / 3600000)}h ago`;
+
     const embed = new EmbedBuilder()
-      .setColor(getRandomColor())
-      .setTitle(`Message Deleted in #${message.channel.name}`)
+      .setColor("#ff6b6b")
       .setAuthor({
-        name: message.author.username,
+        name: `${message.author.tag} (${message.author.id})`,
         iconURL: message.author.displayAvatarURL({ dynamic: true }),
       })
-      .setFooter({ text: message.id })
+      .setDescription(
+        `**Message deleted in** ${message.channel}\n` +
+        `**Author:** ${message.author} (\`${message.author.id}\`)\n` +
+        `**Message Age:** ${ageString}\n` +
+        `**Sent:** <t:${Math.floor(message.createdTimestamp / 1000)}:F>`
+      )
+      .setFooter({ text: `Message ID: ${message.id}` })
       .setTimestamp();
 
-    if (message.content) embed.setDescription(`\`\`\`${message.content}\`\`\``);
-
-    if (message.attachments.size > 0) {
-      const attachmentData = message.attachments.first();
-      const attachment = new AttachmentBuilder(attachmentData.url, {
-        name: "image.png",
-      });
-      embed.setImage("attachment://image.png");
-      await logChannel.send({ embeds: [embed], files: [attachment] });
-    } else {
-      await logChannel.send({ embeds: [embed] });
+    // Add content if exists
+    if (message.content) {
+      const content = message.content.length > 1024 
+        ? message.content.substring(0, 1021) + "..."
+        : message.content;
+      embed.addFields({ name: "Content", value: `\`\`\`${content}\`\`\`` });
     }
+
+    // Handle stickers
+    if (message.stickers.size > 0) {
+      const stickerNames = message.stickers.map(s => s.name).join(", ");
+      embed.addFields({ name: "Stickers", value: stickerNames });
+    }
+
+    // Handle embeds
+    if (message.embeds.length > 0) {
+      const embedInfo = message.embeds.map((e, i) => 
+        `Embed ${i + 1}: ${e.title || e.description?.substring(0, 50) || "[No title]"}`
+      ).join("\n");
+      embed.addFields({ name: `Embeds (${message.embeds.length})`, value: embedInfo });
+    }
+
+    // Download and attach ALL attachments
+    const attachmentFiles = [];
+    if (message.attachments.size > 0) {
+      embed.addFields({ 
+        name: `Attachments (${message.attachments.size})`, 
+        value: message.attachments.map(a => a.name).join("\n") 
+      });
+
+      for (const attachment of message.attachments.values()) {
+        try {
+          const response = await axios.get(attachment.url, { responseType: 'arraybuffer' });
+          const buffer = Buffer.from(response.data);
+          attachmentFiles.push(new AttachmentBuilder(buffer, { name: attachment.name }));
+        } catch (err) {
+          logger.error(`Failed to download attachment ${attachment.name}: ${err.message}`);
+        }
+      }
+    }
+
+    // Try to get context messages for jump link
+    try {
+      const messages = await message.channel.messages.fetch({ limit: 1 });
+      if (messages.size > 0) {
+        const contextMsg = messages.first();
+        embed.addFields({ 
+          name: "Context", 
+          value: `[Jump to channel area](https://discord.com/channels/${message.guild.id}/${message.channel.id}/${contextMsg.id})` 
+        });
+      }
+    } catch (err) {
+      // Context fetch failed, continue without it
+    }
+
+    await logChannel.send({ embeds: [embed], files: attachmentFiles });
   } catch (err) {
     logger.error("Error in messageDelete event: " + (err.stack || err));
   }
 });
 
 // --------------------- Event: Message Update --------------------- //
-// --------------------- Event: Message Update --------------------- //
-const webhook = new WebhookClient({ url: process.env.WEBHOOK });
 client.on("messageUpdate", async (oldMessage, newMessage) => {
   try {
-    // Check that the message's author exists (it might be null for partial messages)
-    if (!oldMessage.author) return;
+    // Filter: Skip if no author (partial), bot messages, or DMs
+    if (!oldMessage.author || oldMessage.author.bot || oldMessage.channel.type === ChannelType.DM) return;
+    
+    // Only log if content actually changed (ignore embed updates, pins, etc.)
+    if (oldMessage.content === newMessage.content) return;
+    
+    const logChannel = client.channels.cache.get("901841617449799680");
+    if (!logChannel) return;
 
-    // Skip bot messages and DMs.
-    if (oldMessage.author.bot || oldMessage.channel.type === ChannelType.DM)
-      return;
-
+    const maxLength = 1024;
+    const oldContent = oldMessage.content || "[No content]";
+    const newContent = newMessage.content || "[No content]";
+    
     const embed = new EmbedBuilder()
-      .setTitle(`Message Edited in #${oldMessage.channel.name}`)
+      .setColor("#ffa500")
       .setAuthor({
-        name: oldMessage.author.username,
+        name: `${oldMessage.author.tag} (${oldMessage.author.id})`,
         iconURL: oldMessage.author.displayAvatarURL({ dynamic: true }),
       })
-      .setColor(getRandomColor())
       .setDescription(
-        `**Previous Message:**\n\`\`\`${oldMessage.content || "N/A"}\`\`\`\n` +
-          `**New Message:**\n\`\`\`${newMessage.content || "N/A"}\`\`\``
+        `**Message edited in** ${newMessage.channel}\n` +
+        `**Author:** ${newMessage.author}\n` +
+        `**Original:** <t:${Math.floor(oldMessage.createdTimestamp / 1000)}:F>\n` +
+        `**Edited:** <t:${Math.floor(Date.now() / 1000)}:F>\n` +
+        `**[Jump to Message](https://discord.com/channels/${newMessage.guild.id}/${newMessage.channel.id}/${newMessage.id})**`
       )
+      .setFooter({ text: `Message ID: ${newMessage.id}` })
       .setTimestamp();
-    await webhook.send({ embeds: [embed] });
+
+    // Check if we need to use a file
+    const totalLength = oldContent.length + newContent.length;
+    
+    if (totalLength > maxLength * 2) {
+      // Create a formatted text file
+      const fileContent = 
+        `Message Edit Log\n` +
+        `================\n\n` +
+        `Author: ${oldMessage.author.tag} (${oldMessage.author.id})\n` +
+        `Channel: #${newMessage.channel.name}\n` +
+        `Message ID: ${newMessage.id}\n` +
+        `Original Time: ${new Date(oldMessage.createdTimestamp).toLocaleString()}\n` +
+        `Edit Time: ${new Date().toLocaleString()}\n` +
+        `Jump Link: https://discord.com/channels/${newMessage.guild.id}/${newMessage.channel.id}/${newMessage.id}\n\n` +
+        `BEFORE:\n` +
+        `${"-".repeat(80)}\n` +
+        `${oldContent}\n\n` +
+        `AFTER:\n` +
+        `${"-".repeat(80)}\n` +
+        `${newContent}`;
+      
+      const attachment = new AttachmentBuilder(Buffer.from(fileContent, 'utf-8'), {
+        name: `message-edit-${newMessage.id}.txt`
+      });
+      
+      embed.addFields({ 
+        name: "Content", 
+        value: "Message too long - see attached file" 
+      });
+      
+      await logChannel.send({ embeds: [embed], files: [attachment] });
+    } else {
+      // Display inline with truncation if needed
+      const beforeText = oldContent.length > maxLength 
+        ? oldContent.substring(0, maxLength - 3) + "..."
+        : oldContent;
+      const afterText = newContent.length > maxLength 
+        ? newContent.substring(0, maxLength - 3) + "..."
+        : newContent;
+      
+      embed.addFields(
+        { name: "Before", value: `\`\`\`${beforeText}\`\`\`` },
+        { name: "After", value: `\`\`\`${afterText}\`\`\`` }
+      );
+      
+      await logChannel.send({ embeds: [embed] });
+    }
   } catch (err) {
     logger.error("Error in messageUpdate event: " + (err.stack || err));
   }
@@ -344,52 +462,176 @@ client.on("messageDeleteBulk", async (messages) => {
     const logChannel = client.channels.cache.get("901841617449799680");
     if (!logChannel) return;
 
-    // Build a basic summary embed
-    let summaryEmbed = new EmbedBuilder()
-      .setColor(getRandomColor())
-      .setTitle("Bulk Message Delete")
-      .setDescription(`Number of messages deleted: **${messages.size}**`)
+    // Get first message for channel reference
+    const firstMessage = messages.first();
+    if (!firstMessage) return;
+
+    // Try to get audit log to find who performed the bulk delete
+    let executor = null;
+    try {
+      const auditLogs = await firstMessage.guild.fetchAuditLogs({
+        type: AuditLogEvent.MessageBulkDelete,
+        limit: 1,
+      });
+      const bulkDeleteLog = auditLogs.entries.first();
+      if (bulkDeleteLog && Date.now() - bulkDeleteLog.createdTimestamp < 5000) {
+        executor = bulkDeleteLog.executor;
+      }
+    } catch (err) {
+      logger.error(`Failed to fetch audit logs: ${err.message}`);
+    }
+
+    // Build summary embed
+    const summaryEmbed = new EmbedBuilder()
+      .setColor("#dc143c")
+      .setTitle("🗑️ Bulk Message Deletion")
+      .setDescription(
+        `**Channel:** ${firstMessage.channel}\n` +
+        `**Messages Deleted:** ${messages.size}\n` +
+        `**Performed by:** ${executor ? `${executor.tag} (${executor.id})` : "Unknown"}\n` +
+        `**Time:** <t:${Math.floor(Date.now() / 1000)}:F>`
+      )
       .setTimestamp();
 
-    // Gather details for each deleted message:
-    // (Author tag, channel, sent time, and content; includes a divider between messages)
-    let messageDetails = [];
-    // Sort messages by creation time (ascending)
-    messages.sort((a, b) => a.createdTimestamp - b.createdTimestamp);
-    messages.forEach((msg) => {
-      let detail =
-        `**Author:** ${msg.author.tag} (${msg.author.id})\n` +
-        `**Channel:** ${msg.channel.name} (${msg.channel.id})\n` +
-        `**Time:** ${new Date(msg.createdTimestamp).toLocaleString()}\n` +
-        `**Content:** ${msg.content ? msg.content : "[No Text Content]"}\n`;
-      messageDetails.push(detail);
+    // Count message statistics
+    const authorCount = new Map();
+    const withAttachments = [];
+    const withEmbeds = [];
+    const withStickers = [];
+    
+    messages.forEach(msg => {
+      if (msg.author) {
+        authorCount.set(msg.author.id, (authorCount.get(msg.author.id) || 0) + 1);
+      }
+      if (msg.attachments.size > 0) withAttachments.push(msg);
+      if (msg.embeds.length > 0) withEmbeds.push(msg);
+      if (msg.stickers.size > 0) withStickers.push(msg);
     });
-    const allDetails = messageDetails.join("\n-----------------\n");
 
-    // Discord embed field value limit is 1024 characters.
-    const maxEmbedField = 1024;
-    let detailsToShow;
-    if (allDetails.length <= maxEmbedField) {
-      detailsToShow = allDetails;
-    } else {
-      detailsToShow = allDetails.slice(0, maxEmbedField - 3) + "...";
+    // Add statistics
+    const topAuthors = Array.from(authorCount.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id, count]) => `<@${id}>: ${count}`)
+      .join("\n");
+    
+    if (topAuthors) {
+      summaryEmbed.addFields({ name: "Top Authors", value: topAuthors, inline: true });
     }
-    summaryEmbed.addFields({
-      name: "Deleted Message Details",
-      value: detailsToShow,
-    });
+    
+    summaryEmbed.addFields(
+      { name: "With Attachments", value: `${withAttachments.length}`, inline: true },
+      { name: "With Embeds", value: `${withEmbeds.length}`, inline: true }
+    );
 
-    // If the full details exceed the embed limit, attach a text file containing all details.
-    let attachments = [];
-    if (allDetails.length > maxEmbedField) {
-      attachments.push(
-        new AttachmentBuilder(Buffer.from(allDetails, "utf8"), {
-          name: "bulk-deleted-messages.txt",
-        })
+    if (executor) {
+      summaryEmbed.setFooter({ 
+        text: `Deleted by ${executor.tag}`, 
+        iconURL: executor.displayAvatarURL({ dynamic: true }) 
+      });
+    }
+
+    // Create temporary directory for zip
+    const tempDir = join(process.cwd(), 'temp', `bulk-delete-${Date.now()}`);
+    await fs.mkdir(tempDir, { recursive: true });
+    
+    try {
+      // Sort messages by timestamp
+      const sortedMessages = Array.from(messages.values()).sort(
+        (a, b) => a.createdTimestamp - b.createdTimestamp
       );
-    }
 
-    await logChannel.send({ embeds: [summaryEmbed], files: attachments });
+      // Create messages log file
+      let messagesLog = `BULK DELETE LOG\n`;
+      messagesLog += `${"=".repeat(80)}\n\n`;
+      messagesLog += `Channel: #${firstMessage.channel.name} (${firstMessage.channel.id})\n`;
+      messagesLog += `Guild: ${firstMessage.guild.name}\n`;
+      messagesLog += `Total Messages: ${messages.size}\n`;
+      messagesLog += `Deleted by: ${executor ? `${executor.tag} (${executor.id})` : "Unknown"}\n`;
+      messagesLog += `Timestamp: ${new Date().toLocaleString()}\n`;
+      messagesLog += `${"=".repeat(80)}\n\n`;
+
+      // Process each message
+      let attachmentCount = 0;
+      for (const [index, msg] of sortedMessages.entries()) {
+        messagesLog += `\nMESSAGE ${index + 1}\n`;
+        messagesLog += `${"-".repeat(80)}\n`;
+        messagesLog += `Author: ${msg.author?.tag || "Unknown"} (${msg.author?.id || "N/A"})\n`;
+        messagesLog += `Message ID: ${msg.id}\n`;
+        messagesLog += `Timestamp: ${new Date(msg.createdTimestamp).toLocaleString()}\n`;
+        messagesLog += `Content: ${msg.content || "[No text content]"}\n`;
+        
+        if (msg.stickers.size > 0) {
+          messagesLog += `Stickers: ${Array.from(msg.stickers.values()).map(s => s.name).join(", ")}\n`;
+        }
+        
+        if (msg.embeds.length > 0) {
+          messagesLog += `Embeds: ${msg.embeds.length}\n`;
+          msg.embeds.forEach((e, i) => {
+            messagesLog += `  Embed ${i + 1}: ${e.title || e.description?.substring(0, 50) || "[No title]"}\n`;
+          });
+        }
+
+        // Download attachments
+        if (msg.attachments.size > 0) {
+          messagesLog += `Attachments: ${msg.attachments.size}\n`;
+          for (const attachment of msg.attachments.values()) {
+            attachmentCount++;
+            const safeFilename = `${index + 1}_${attachmentCount}_${attachment.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+            messagesLog += `  - ${attachment.name} (saved as: ${safeFilename})\n`;
+            
+            try {
+              const response = await axios.get(attachment.url, { 
+                responseType: 'arraybuffer',
+                timeout: 10000 
+              });
+              await fs.writeFile(join(tempDir, safeFilename), Buffer.from(response.data));
+            } catch (err) {
+              messagesLog += `    [Failed to download: ${err.message}]\n`;
+              logger.error(`Failed to download attachment ${attachment.name}: ${err.message}`);
+            }
+          }
+        }
+        messagesLog += `\n`;
+      }
+
+      // Write messages log
+      await fs.writeFile(join(tempDir, 'messages.txt'), messagesLog);
+
+      // Create zip file
+      const zipPath = join(process.cwd(), 'temp', `bulk-delete-${Date.now()}.zip`);
+      const output = createWriteStream(zipPath);
+      const archive = archiver('zip', { zlib: { level: 9 } });
+
+      await new Promise((resolve, reject) => {
+        output.on('close', resolve);
+        output.on('error', reject);
+        archive.on('error', reject);
+        
+        archive.pipe(output);
+        archive.directory(tempDir, false);
+        archive.finalize();
+      });
+
+      // Send to log channel
+      const zipAttachment = new AttachmentBuilder(zipPath, {
+        name: `bulk-delete-${firstMessage.channel.name}-${Date.now()}.zip`
+      });
+
+      await logChannel.send({ embeds: [summaryEmbed], files: [zipAttachment] });
+
+      // Cleanup
+      await fs.rm(tempDir, { recursive: true, force: true });
+      await fs.unlink(zipPath).catch(() => {});
+      
+    } catch (err) {
+      logger.error(`Error creating zip file: ${err.stack || err}`);
+      // Cleanup on error
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+      
+      // Send summary embed without zip
+      await logChannel.send({ embeds: [summaryEmbed] });
+    }
   } catch (error) {
     logger.error("Error in messageDeleteBulk event: " + (error.stack || error));
   }

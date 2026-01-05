@@ -9,6 +9,7 @@
   "dependencies": {
     "@iamtraction/google-translate": "^2.0.1",
     "@napi-rs/canvas": "^0.1.67",
+    "archiver": "^7.0.1",
     "axios": "^1.7.9",
     "boxen": "^8.0.1",
     "chalk": "^5.4.1",
