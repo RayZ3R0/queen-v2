@@ -321,7 +321,9 @@ client.on("messageDelete", async (message) => {
     // Handle stickers
     if (message.stickers.size > 0) {
       const stickerNames = message.stickers.map(s => s.name).join(", ");
-      embed.addFields({ name: "Stickers", value: stickerNames });
+      if (stickerNames.length > 0) {
+        embed.addFields({ name: "Stickers", value: stickerNames });
+      }
     }
 
     // Handle embeds
@@ -329,16 +331,26 @@ client.on("messageDelete", async (message) => {
       const embedInfo = message.embeds.map((e, i) => 
         `Embed ${i + 1}: ${e.title || e.description?.substring(0, 50) || "[No title]"}`
       ).join("\n");
-      embed.addFields({ name: `Embeds (${message.embeds.length})`, value: embedInfo });
+      if (embedInfo.length > 0) {
+        embed.addFields({ name: `Embeds (${message.embeds.length})`, value: embedInfo });
+      }
     }
 
     // Download and attach ALL attachments
     const attachmentFiles = [];
     if (message.attachments.size > 0) {
-      embed.addFields({ 
-        name: `Attachments (${message.attachments.size})`, 
-        value: message.attachments.map(a => a.name).join("\n") 
-      });
+      const attachmentNames = message.attachments.map(a => a.name).join("\n");
+      if (attachmentNames.length > 0 && attachmentNames.length <= 1024) {
+        embed.addFields({ 
+          name: `Attachments (${message.attachments.size})`, 
+          value: attachmentNames
+        });
+      } else if (attachmentNames.length > 1024) {
+        embed.addFields({ 
+          name: `Attachments (${message.attachments.size})`, 
+          value: attachmentNames.substring(0, 1021) + "..."
+        });
+      }
 
       for (const attachment of message.attachments.values()) {
         try {

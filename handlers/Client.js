@@ -10,7 +10,6 @@ import {
   MessageFlags,
 } from "discord.js";
 import settings from "../settings/config.js";
-import InviteManager from "../utils/inviteManager.js"; // Add this import
 
 export class Bot extends Client {
   constructor() {
@@ -49,9 +48,6 @@ export class Bot extends Client {
     this.mcommands = new Collection();
     this.cooldowns = new Collection();
     this.events = new Collection();
-
-    // Managers
-    this.inviteManager = new InviteManager(this);
 
     // Enhanced gambling session tracking
     this.activeGambleSessions = new Map();
@@ -166,12 +162,6 @@ export class Bot extends Client {
       // Force fetch all guilds first
       await this.guilds.fetch();
       console.log("> ✅ Guilds fetched");
-
-      // Initialize invite caching for all guilds after login
-      for (const [guildId, guild] of this.guilds.cache) {
-        await this.inviteManager.cacheGuildInvites(guild);
-      }
-      console.log("> ✅ Guild invites cache initialized");
 
       // Load handlers after successful login
       await loadHandlers(this);
