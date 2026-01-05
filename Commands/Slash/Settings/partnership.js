@@ -101,6 +101,11 @@ export default {
             .setDescription("Invite code to refresh")
             .setRequired(true)
         )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName("reset-all")
+        .setDescription("Delete all partnerships from database (Admin only)")
     ),
   category: "Settings",
   botPermissions: ["SendMessages", "EmbedLinks", "ManageMessages"],
@@ -135,6 +140,9 @@ export default {
         break;
       case "refresh":
         await handleRefresh(interaction);
+        break;
+      case "reset-all":
+        await handleResetAll(interaction);
         break;
     }
   },
@@ -699,4 +707,47 @@ async function handleRefresh(interaction) {
     .setTimestamp();
 
   await interaction.editReply({ embeds: [embed] });
+}
+
+async function handleResetAll(interaction) {
+  // Check if user has administrator permission
+  if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+    return interaction.reply({
+      content: "❌ You need Administrator permission to use this command.",
+      flags: 64,
+    });
+  }
+
+  await interaction.reply({
+    content: "⚠️ **Warning:** This will delete ALL partnerships from the database!\n\nReply with `confirm` within 30 seconds to proceed.",
+    flags: 64,
+  });
+
+  try {
+    const filter = m => m.author.id === interaction.user.id && m.content.toLowerCase() === 'confirm';
+    const collected = await interaction.channel.awaitMessages({
+      filter,
+      max: 1,
+      time: 30000,
+      errors: ['time']
+    });
+
+    if (collected.size > 0) {
+      const count = await Partnership.countDocuments();
+      await Partnership.deleteMany({});
+      
+      const embed = new EmbedBuilder()
+        .setColor("#ff6b6b")
+        .setTitle("🗑️ Partnerships Reset")
+        .setDescription(`Successfully deleted **${count}** partnerships from the database.`)
+        .setTimestamp();
+
+      await interaction.followUp({ embeds: [embed] });
+    }
+  } catch (error) {
+    await interaction.followUp({
+      content: "❌ Reset cancelled - confirmation not received within 30 seconds.",
+      flags: 64,
+    });
+  }
 }
