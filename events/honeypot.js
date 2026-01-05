@@ -269,7 +269,7 @@ client.on("messageCreate", async (message) => {
       }
 
       await modChannel.send({
-        content: `<@&${MOD_ROLE_ID}>`,
+        // content: `<@&${MOD_ROLE_ID}>`,
         embeds: [modEmbed],
       });
     }
