@@ -75,6 +75,19 @@ export default {
               { name: "All", value: "all" }
             )
         )
+        .addStringOption((option) =>
+          option
+            .setName("sort")
+            .setDescription("Sort partnerships by")
+            .addChoices(
+              { name: "Member Count (High to Low)", value: "members-desc" },
+              { name: "Member Count (Low to High)", value: "members-asc" },
+              { name: "Server Name (A-Z)", value: "name-asc" },
+              { name: "Server Name (Z-A)", value: "name-desc" },
+              { name: "Date Added (Newest)", value: "date-desc" },
+              { name: "Date Added (Oldest)", value: "date-asc" }
+            )
+        )
     )
     .addSubcommand((subcommand) =>
       subcommand
@@ -274,9 +287,36 @@ async function handleList(interaction) {
   await interaction.deferReply({ flags: 64 });
 
   const statusFilter = interaction.options.getString("status") || "active";
+  const sortOption = interaction.options.getString("sort") || "date-desc";
   
   const query = statusFilter === "all" ? {} : { status: statusFilter };
-  const partnerships = await Partnership.find(query).sort({ addedAt: -1 });
+  
+  // Determine sort order based on option
+  let sortQuery = {};
+  switch (sortOption) {
+    case "members-desc":
+      sortQuery = { memberCount: -1 };
+      break;
+    case "members-asc":
+      sortQuery = { memberCount: 1 };
+      break;
+    case "name-asc":
+      sortQuery = { guildName: 1 };
+      break;
+    case "name-desc":
+      sortQuery = { guildName: -1 };
+      break;
+    case "date-desc":
+      sortQuery = { addedAt: -1 };
+      break;
+    case "date-asc":
+      sortQuery = { addedAt: 1 };
+      break;
+    default:
+      sortQuery = { addedAt: -1 };
+  }
+  
+  const partnerships = await Partnership.find(query).sort(sortQuery);
 
   if (partnerships.length === 0) {
     return interaction.editReply(`No partnerships found with status: **${statusFilter}**`);
@@ -290,11 +330,21 @@ async function handleList(interaction) {
 
   let currentPage = 0;
 
+  // Get sort label for display
+  const sortLabels = {
+    "members-desc": "Members ↓",
+    "members-asc": "Members ↑",
+    "name-asc": "Name A→Z",
+    "name-desc": "Name Z→A",
+    "date-desc": "Newest First",
+    "date-asc": "Oldest First"
+  };
+
   const generateEmbed = (page) => {
     const embed = new EmbedBuilder()
       .setColor("#5865F2")
       .setTitle(`📋 Partnerships (${statusFilter})`)
-      .setDescription(`Total: ${partnerships.length}`)
+      .setDescription(`Total: ${partnerships.length} • Sort: ${sortLabels[sortOption]}`)
       .setTimestamp();
 
     chunks[page].forEach((p) => {
