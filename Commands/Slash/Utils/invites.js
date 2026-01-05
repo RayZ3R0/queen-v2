@@ -80,6 +80,11 @@ export default {
       subcommand
         .setName("reset-all")
         .setDescription("Reset ALL invites for this server (Admin only)")
+    )
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName("import")
+        .setDescription("Import existing invite uses from current invites (Admin only)")
     ),
 
   async run({ client, interaction }) {
@@ -109,6 +114,9 @@ export default {
           break;
         case "reset-all":
           await handleResetAll(interaction, tracker);
+          break;
+        case "import":
+          await handleImport(interaction, tracker);
           break;
       }
     } catch (error) {
@@ -280,6 +288,131 @@ async function handleResetAll(interaction, tracker) {
     await interaction.followUp({
       content: "❌ Reset cancelled - confirmation not received.",
       flags: 64,
+    });
+  }
+}
+
+async function handleImport(interaction, tracker) {
+  // Check admin permissions
+  if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({
+      content: "❌ You need Administrator permission to use this command.",
+      flags: 64,
+    });
+    return;
+  }
+
+  await interaction.deferReply();
+
+  try {
+    // Check bot permissions
+    if (!interaction.guild.members.me.permissions.has(PermissionFlagsBits.ManageGuild)) {
+      await interaction.editReply({
+        content: "❌ I need the `Manage Server` permission to fetch invites.",
+      });
+      return;
+    }
+
+    // Fetch all invites
+    const invites = await interaction.guild.invites.fetch();
+    
+    if (invites.size === 0) {
+      await interaction.editReply({
+        content: "📊 No invites found to import.",
+      });
+      return;
+    }
+
+    let totalImported = 0;
+    let inviterCount = 0;
+    const inviterMap = new Map();
+
+    // Process regular invites
+    for (const [code, invite] of invites) {
+      if (!invite.inviter) continue;
+      
+      const uses = invite.uses || 0;
+      if (uses === 0) continue;
+
+      const inviterId = invite.inviter.id;
+      
+      if (!inviterMap.has(inviterId)) {
+        inviterMap.set(inviterId, {
+          user: invite.inviter,
+          uses: 0,
+        });
+      }
+      
+      inviterMap.get(inviterId).uses += uses;
+      totalImported += uses;
+    }
+
+    // Check for vanity URL
+    if (interaction.guild.vanityURLCode) {
+      try {
+        const vanityData = await interaction.guild.fetchVanityData();
+        if (vanityData.uses > 0) {
+          const ownerId = interaction.guild.ownerId;
+          
+          if (!inviterMap.has(ownerId)) {
+            const owner = await interaction.client.users.fetch(ownerId);
+            inviterMap.set(ownerId, {
+              user: owner,
+              uses: 0,
+            });
+          }
+          
+          inviterMap.get(ownerId).uses += vanityData.uses;
+          totalImported += vanityData.uses;
+        }
+      } catch (err) {
+        // Vanity not available
+      }
+    }
+
+    // Update database
+    for (const [inviterId, data] of inviterMap) {
+      await tracker.addBonus(interaction.guild.id, inviterId, data.uses);
+      inviterCount++;
+    }
+
+    // Create summary embed
+    const embed = new EmbedBuilder()
+      .setColor("#00ff00")
+      .setTitle("📥 Invite Import Complete")
+      .setDescription(
+        `Successfully imported invite data from existing invites.\n\n` +
+        `**Total Invites:** ${totalImported}\n` +
+        `**Unique Inviters:** ${inviterCount}\n\n` +
+        `⚠️ **Note:** This import adds uses as bonus invites. ` +
+        `The system cannot determine leaves, fakes, or exact join dates from existing invites.`
+      )
+      .setTimestamp();
+
+    // Add top 10 inviters
+    if (inviterMap.size > 0) {
+      const topInviters = Array.from(inviterMap.entries())
+        .sort((a, b) => b[1].uses - a[1].uses)
+        .slice(0, 10);
+
+      let topList = "";
+      for (let i = 0; i < topInviters.length; i++) {
+        const [inviterId, data] = topInviters[i];
+        const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `**${i + 1}.**`;
+        topList += `${medal} ${data.user.tag} - ${data.uses} invites\n`;
+      }
+
+      embed.addFields({
+        name: "Top Inviters",
+        value: topList,
+      });
+    }
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error) {
+    console.error("Error importing invites:", error);
+    await interaction.editReply({
+      content: "❌ An error occurred while importing invites.",
     });
   }
 }
