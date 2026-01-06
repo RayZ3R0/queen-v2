@@ -261,7 +261,7 @@ client.on("guildMemberRemove", async (member) => {
       .setTitle("Ara? Leaving so soon?")
       .setDescription(
         `**${member.displayName}** has departed from ${guild.name}.\n` +
-        `We now have **${memberCount}** members remaining.`
+        `We now have **${memberCount}** clones remaining.`
       )
       .setImage("https://i.imgur.com/O2r9YJr.png")
       .setFooter({ text: `ID: ${member.id}` })
