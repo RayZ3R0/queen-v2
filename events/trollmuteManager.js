@@ -98,9 +98,9 @@ export default async (client) => {
           .fetch(trollMute.user)
           .catch(() => null);
         if (!member) {
-          console.log(
-            `Could not find member ${trollMute.user} in guild ${guild.name}, skipping`
-          );
+          // console.log(
+          //   `Could not find member ${trollMute.user} in guild ${guild.name}, skipping`
+          // );
           continue;
         }
 
@@ -146,22 +146,21 @@ export default async (client) => {
                   channel
                     ?.permissionsFor(guild.members.me)
                     ?.has("SendMessages") &&
-                  channel?.permissionsFor(member)?.has("ViewChannel")
+                    channel?.permissionsFor(member)?.has("ViewChannel")
                     ? channel
                     : guild.channels.cache.find(
-                        (c) =>
-                          c.type === 0 &&
-                          c
-                            .permissionsFor(guild.members.me)
-                            ?.has("SendMessages") &&
-                          c.permissionsFor(member)?.has("ViewChannel")
-                      );
+                      (c) =>
+                        c.type === 0 &&
+                        c
+                          .permissionsFor(guild.members.me)
+                          ?.has("SendMessages") &&
+                        c.permissionsFor(member)?.has("ViewChannel")
+                    );
 
                 if (targetChannel) {
                   await targetChannel.send({
-                    content: `<@${member.id}> You have ${
-                      trollMute.speakDuration / 1000
-                    } seconds to speak before being sent to the shadow realm again!`,
+                    content: `<@${member.id}> You have ${trollMute.speakDuration / 1000
+                      } seconds to speak before being sent to the shadow realm again!`,
                     allowedMentions: { users: [member.id] },
                   });
                   console.log(
@@ -195,8 +194,7 @@ export default async (client) => {
             ); // 28 days in ms
             await member.timeout(timeoutDuration, "TrollMute cycle");
             console.log(
-              `Applied timeout of ${timeoutDuration / 1000}s to ${
-                member.user.tag
+              `Applied timeout of ${timeoutDuration / 1000}s to ${member.user.tag
               }`
             );
 
