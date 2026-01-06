@@ -8,6 +8,7 @@ import {
   Message,
   InteractionResponse,
   MessageFlags,
+  Options,
 } from "discord.js";
 import settings from "../settings/config.js";
 
@@ -28,10 +29,21 @@ export class Bot extends Client {
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildPresences,
         GatewayIntentBits.GuildWebhooks,
         GatewayIntentBits.GuildEmojisAndStickers,
       ],
+      makeCache: Options.cacheWithLimits({
+        ...Options.DefaultMakeCacheSettings,
+        GuildBanManager: 0,
+        BaseGuildEmojiManager: 0,
+        GuildEmojiManager: 0,
+        PresenceManager: 0,
+        ReactionManager: 0,
+        ReactionUserManager: 0,
+        ThreadMemberManager: 0,
+        StageInstanceManager: 0,
+        GuildScheduledEventManager: 0,
+      }),
       shards: "auto",
       failIfNotExists: false,
       allowedMentions: {
@@ -193,7 +205,7 @@ export class Bot extends Client {
   async send(interactionOrMessage, options) {
     try {
       if (interactionOrMessage.deferred || interactionOrMessage.replied) {
-        await interactionOrMessage.deferReply().catch((e) => {});
+        await interactionOrMessage.deferReply().catch((e) => { });
         return interactionOrMessage.followUp(options);
       } else {
         return interactionOrMessage.reply(options);

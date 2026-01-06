@@ -5,13 +5,7 @@ import {
   handleCommandError,
 } from "../utils/permissionHandler.js";
 import { getCooldown, setCooldown } from "../handlers/functions.js";
-import {
-  handleOverview,
-  handleMembers,
-  handleActivity,
-  handleChannels,
-  timeframes,
-} from "../utils/statsViewHandlers.js";
+
 
 client.on("interactionCreate", async (interaction) => {
   try {
@@ -172,32 +166,16 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
 
-    // Handle stats timeframe selection
-    if (
-      interaction.isStringSelectMenu() &&
-      interaction.customId === "timeframe_select"
-    ) {
-      await handleTimeframeSelection(interaction).catch(async (error) => {
-        console.error("Error handling timeframe selection:", error);
-        try {
-          await interaction.editReply({
-            content: "An error occurred while updating the statistics.",
-            ephemeral: true,
-          });
-        } catch (err) {
-          console.error("Error sending error response:", err);
-        }
-      });
-    }
+
   } catch (error) {
     console.error("An error occurred in interactionCreate event:", error);
     try {
       const errorMessage = {
         content:
           error.message?.includes("chart") ||
-          error.message?.includes("panicked") ||
-          error.message?.includes("None value") ||
-          error.message?.includes("cannot read properties of null")
+            error.message?.includes("panicked") ||
+            error.message?.includes("None value") ||
+            error.message?.includes("cannot read properties of null")
             ? "❌ Unable to generate statistics chart. Statistics will be available once more data is collected."
             : "❌ An unexpected error occurred. Please try again later.",
         ephemeral: true,
@@ -214,64 +192,4 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-async function handleTimeframeSelection(interaction) {
-  try {
-    await interaction.deferUpdate();
 
-    const timeframe = interaction.values[0];
-    const message = interaction.message;
-    const oldEmbed = message.embeds[0];
-    const components = [...message.components];
-    const files = [];
-
-    // Get the current view from the embed title
-    const titleParts = oldEmbed.title.split(" - ");
-    const currentView = titleParts[1].toLowerCase();
-
-    // Create new embed with updated title
-    const embed = EmbedBuilder.from(oldEmbed).setTitle(
-      `Server Statistics - ${
-        currentView.charAt(0).toUpperCase() + currentView.slice(1)
-      } - ${timeframes[timeframe].label}`
-    );
-
-    // Re-run the appropriate handler
-    switch (currentView) {
-      case "overview":
-        files.push(...(await handleOverview(interaction, embed, timeframe)));
-        break;
-      case "members":
-        files.push(...(await handleMembers(interaction, embed, timeframe)));
-        break;
-      case "activity":
-        files.push(...(await handleActivity(interaction, embed, timeframe)));
-        break;
-      case "channels":
-        files.push(...(await handleChannels(interaction, embed, timeframe)));
-        break;
-      default:
-        throw new Error(`Invalid view: ${currentView}`);
-    }
-
-    // Update timeframe menu's selected option
-    const timeframeMenu = components[components.length - 1].components[0];
-    timeframeMenu.options.forEach((option) => {
-      option.default = option.value === timeframe;
-    });
-
-    // Send the updated reply
-    await interaction.editReply({
-      embeds: [embed],
-      components,
-      files,
-    });
-  } catch (error) {
-    console.error("Error in handleTimeframeSelection:", error);
-    await interaction
-      .editReply({
-        content: "An error occurred while updating the statistics.",
-        ephemeral: true,
-      })
-      .catch(console.error);
-  }
-}
