@@ -36,6 +36,9 @@ export default {
                         if (e.description)
                             output += `    Desc: ${e.description.replace(/\n/g, " ")}\n`;
                         if (e.url) output += `    URL: ${e.url}\n`;
+                        if (e.image) output += `    Image: ${e.image.url}\n`;
+                        if (e.thumbnail) output += `    Thumbnail: ${e.thumbnail.url}\n`;
+                        if (e.video) output += `    Video: ${e.video.url}\n`;
                         if (e.footer) output += `    Footer: ${e.footer.text}\n`;
                     }
                 }
