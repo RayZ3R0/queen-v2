@@ -33,7 +33,7 @@ client.on("messageCreate", async (message) => {
       );
     if (!command) return;
 
-    const { owneronly, userPermissions, botPermissions } = command;
+    const { owneronly = false, userPermissions = [], botPermissions = [] } = command;
     const { author, member, guild } = message;
 
     // Check if the command is owner-only.
