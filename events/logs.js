@@ -31,7 +31,7 @@ const logger = winston.createLogger({
 process.on("unhandledRejection", (reason, promise) => {
   logger.error(
     chalk.blueBright("[antiCrash] ") +
-      chalk.red("Unhandled rejection detected.")
+    chalk.red("Unhandled rejection detected.")
   );
   logger.error(reason.stack || reason);
 });
@@ -44,7 +44,7 @@ process.on("uncaughtException", (err, origin) => {
 process.on("uncaughtExceptionMonitor", (err, origin) => {
   logger.error(
     chalk.blueBright("[antiCrash] ") +
-      chalk.red("Uncaught exception (Monitor) detected.")
+    chalk.red("Uncaught exception (Monitor) detected.")
   );
   logger.error(err.stack || err);
 });
@@ -113,9 +113,8 @@ client.on("channelPinsUpdate", async (channel, time) => {
 // --------------------- Event: Emoji Create --------------------- //
 client.on("emojiCreate", async (emoji) => {
   try {
-    const imageUrl = `https://cdn.discordapp.com/emojis/${emoji.id}.${
-      emoji.animated ? "gif" : "png"
-    }?size=64`;
+    const imageUrl = `https://cdn.discordapp.com/emojis/${emoji.id}.${emoji.animated ? "gif" : "png"
+      }?size=64`;
     const embed = new EmbedBuilder()
       .setColor(getRandomColor())
       .setTitle(`Emoji Created: ${emoji.toString()}`)
@@ -132,9 +131,8 @@ client.on("emojiCreate", async (emoji) => {
 // --------------------- Event: Emoji Delete --------------------- //
 client.on("emojiDelete", async (emoji) => {
   try {
-    const imageUrl = `https://cdn.discordapp.com/emojis/${emoji.id}.${
-      emoji.animated ? "gif" : "png"
-    }?size=64`;
+    const imageUrl = `https://cdn.discordapp.com/emojis/${emoji.id}.${emoji.animated ? "gif" : "png"
+      }?size=64`;
     const embed = new EmbedBuilder()
       .setColor(getRandomColor())
       .setTitle("Emoji Deleted")
@@ -158,8 +156,7 @@ client.on("emojiUpdate", async (oldEmoji, newEmoji) => {
         `**Before:** ${oldEmoji.name}\n**After:** ${newEmoji.name}`
       )
       .setThumbnail(
-        `https://cdn.discordapp.com/emojis/${newEmoji.id}.${
-          newEmoji.animated ? "gif" : "png"
+        `https://cdn.discordapp.com/emojis/${newEmoji.id}.${newEmoji.animated ? "gif" : "png"
         }?size=64`
       )
       .setTimestamp()
@@ -175,21 +172,49 @@ client.on("emojiUpdate", async (oldEmoji, newEmoji) => {
 client.on("guildMemberAdd", async (member) => {
   try {
     if (member.user.bot) return;
+
+    const guild = member.guild;
+    const memberCount = guild.memberCount;
+    // Calculate ordinal suffix (st, nd, rd, th)
+    const suffix = (n) => {
+      const s = ["th", "st", "nd", "rd"];
+      const v = n % 100;
+      return s[(v - 20) % 10] || s[v] || s[0];
+    };
+    const ordinalCount = `${memberCount}${suffix(memberCount)}`;
+
     const embed = new EmbedBuilder()
-      .setColor("#ff0000")
-      .setTitle(`**${member.displayName}** welcome to ${member.guild.name}!`)
-      .setDescription(`<@${member.id}>, welcome to the server!`)
-      .addFields({
-        name: "\u200b",
-        value:
-          "- Head over to the rules channel and read all the rules.\n" +
-          "- Check out the roles channel to get some roles.\n" +
-          "- Start chatting in the general channel.\n" +
-          "- Visit the support channel for help.",
+      .setColor("#ff0000") // Kurumi Red
+      .setAuthor({
+        name: `Welcome to ${guild.name}`,
+        iconURL: guild.iconURL({ dynamic: true }),
       })
+      .setTitle(`Ara ara~ Welcome, ${member.displayName}!`)
+      .setDescription(
+        `My, my... a new visitor? <@${member.id}> has arrived.\n` +
+        `You are our **${ordinalCount}** member. Make sure to behave, or else...`
+      )
+      .addFields(
+        {
+          name: "Important Areas",
+          value:
+            "📜 **Rules:** <#747672817297915906>\n" +
+            "🎭 **Roles:** <#747676875060674630>\n" +
+            "💬 **General Chat:** <#839082244060217404>\n" +
+            "🆘 **Support:** <#968048918346727424>",
+          inline: false,
+        },
+        {
+          name: "Account Created",
+          value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:R>`,
+          inline: true,
+        }
+      )
       .setImage("https://i.imgur.com/5bpI2IG.png")
       .setThumbnail(member.displayAvatarURL({ dynamic: true, size: 1024 }))
+      .setFooter({ text: `ID: ${member.id}` })
       .setTimestamp();
+
     const welcomeChannel = client.channels.cache.get("775700237481410560");
     if (welcomeChannel) await welcomeChannel.send({ embeds: [embed] });
 
@@ -219,14 +244,29 @@ client.on("guildMemberAdd", async (member) => {
 });
 
 // --------------------- Event: Guild Member Remove --------------------- //
+// --------------------- Event: Guild Member Remove --------------------- //
 client.on("guildMemberRemove", async (member) => {
   try {
     if (member.user.bot) return;
+
+    const guild = member.guild;
+    const memberCount = guild.memberCount;
+
     const embed = new EmbedBuilder()
       .setColor("#ff0000")
-      .setTitle(`**${member.displayName}** has left ${member.guild.name}`)
+      .setAuthor({
+        name: `${member.user.tag} has left`,
+        iconURL: member.user.displayAvatarURL({ dynamic: true }),
+      })
+      .setTitle("Ara? Leaving so soon?")
+      .setDescription(
+        `**${member.displayName}** has departed from ${guild.name}.\n` +
+        `We now have **${memberCount}** members remaining.`
+      )
       .setImage("https://i.imgur.com/O2r9YJr.png")
+      .setFooter({ text: `ID: ${member.id}` })
       .setTimestamp();
+
     const logChannel = client.channels.cache.get("901354934795141140");
     if (logChannel) await logChannel.send({ embeds: [embed] });
   } catch (err) {
@@ -284,16 +324,16 @@ client.on("messageDelete", async (message) => {
   try {
     // Filter: Skip if no author (partial), bot messages, or DMs
     if (!message.author || message.author.bot || message.channel.type === ChannelType.DM) return;
-    
+
     const logChannel = client.channels.cache.get("901841617449799680");
     if (!logChannel) return;
 
     const messageAge = Date.now() - message.createdTimestamp;
-    const ageString = messageAge < 60000 
+    const ageString = messageAge < 60000
       ? `${Math.floor(messageAge / 1000)}s ago`
       : messageAge < 3600000
-      ? `${Math.floor(messageAge / 60000)}m ago`
-      : `${Math.floor(messageAge / 3600000)}h ago`;
+        ? `${Math.floor(messageAge / 60000)}m ago`
+        : `${Math.floor(messageAge / 3600000)}h ago`;
 
     const embed = new EmbedBuilder()
       .setColor("#ff6b6b")
@@ -312,7 +352,7 @@ client.on("messageDelete", async (message) => {
 
     // Add content if exists
     if (message.content) {
-      const content = message.content.length > 1024 
+      const content = message.content.length > 1024
         ? message.content.substring(0, 1021) + "..."
         : message.content;
       embed.addFields({ name: "Content", value: `\`\`\`${content}\`\`\`` });
@@ -328,7 +368,7 @@ client.on("messageDelete", async (message) => {
 
     // Handle embeds
     if (message.embeds.length > 0) {
-      const embedInfo = message.embeds.map((e, i) => 
+      const embedInfo = message.embeds.map((e, i) =>
         `Embed ${i + 1}: ${e.title || e.description?.substring(0, 50) || "[No title]"}`
       ).join("\n");
       if (embedInfo.length > 0) {
@@ -341,13 +381,13 @@ client.on("messageDelete", async (message) => {
     if (message.attachments.size > 0) {
       const attachmentNames = message.attachments.map(a => a.name).join("\n");
       if (attachmentNames.length > 0 && attachmentNames.length <= 1024) {
-        embed.addFields({ 
-          name: `Attachments (${message.attachments.size})`, 
+        embed.addFields({
+          name: `Attachments (${message.attachments.size})`,
           value: attachmentNames
         });
       } else if (attachmentNames.length > 1024) {
-        embed.addFields({ 
-          name: `Attachments (${message.attachments.size})`, 
+        embed.addFields({
+          name: `Attachments (${message.attachments.size})`,
           value: attachmentNames.substring(0, 1021) + "..."
         });
       }
@@ -368,9 +408,9 @@ client.on("messageDelete", async (message) => {
       const messages = await message.channel.messages.fetch({ limit: 1 });
       if (messages.size > 0) {
         const contextMsg = messages.first();
-        embed.addFields({ 
-          name: "Context", 
-          value: `[Jump to channel area](https://discord.com/channels/${message.guild.id}/${message.channel.id}/${contextMsg.id})` 
+        embed.addFields({
+          name: "Context",
+          value: `[Jump to channel area](https://discord.com/channels/${message.guild.id}/${message.channel.id}/${contextMsg.id})`
         });
       }
     } catch (err) {
@@ -388,17 +428,17 @@ client.on("messageUpdate", async (oldMessage, newMessage) => {
   try {
     // Filter: Skip if no author (partial), bot messages, or DMs
     if (!oldMessage.author || oldMessage.author.bot || oldMessage.channel.type === ChannelType.DM) return;
-    
+
     // Only log if content actually changed (ignore embed updates, pins, etc.)
     if (oldMessage.content === newMessage.content) return;
-    
+
     const logChannel = client.channels.cache.get("901841617449799680");
     if (!logChannel) return;
 
     const maxLength = 1024;
     const oldContent = oldMessage.content || "[No content]";
     const newContent = newMessage.content || "[No content]";
-    
+
     const embed = new EmbedBuilder()
       .setColor("#ffa500")
       .setAuthor({
@@ -417,10 +457,10 @@ client.on("messageUpdate", async (oldMessage, newMessage) => {
 
     // Check if we need to use a file
     const totalLength = oldContent.length + newContent.length;
-    
+
     if (totalLength > maxLength * 2) {
       // Create a formatted text file
-      const fileContent = 
+      const fileContent =
         `Message Edit Log\n` +
         `================\n\n` +
         `Author: ${oldMessage.author.tag} (${oldMessage.author.id})\n` +
@@ -435,31 +475,31 @@ client.on("messageUpdate", async (oldMessage, newMessage) => {
         `AFTER:\n` +
         `${"-".repeat(80)}\n` +
         `${newContent}`;
-      
+
       const attachment = new AttachmentBuilder(Buffer.from(fileContent, 'utf-8'), {
         name: `message-edit-${newMessage.id}.txt`
       });
-      
-      embed.addFields({ 
-        name: "Content", 
-        value: "Message too long - see attached file" 
+
+      embed.addFields({
+        name: "Content",
+        value: "Message too long - see attached file"
       });
-      
+
       await logChannel.send({ embeds: [embed], files: [attachment] });
     } else {
       // Display inline with truncation if needed
-      const beforeText = oldContent.length > maxLength 
+      const beforeText = oldContent.length > maxLength
         ? oldContent.substring(0, maxLength - 3) + "..."
         : oldContent;
-      const afterText = newContent.length > maxLength 
+      const afterText = newContent.length > maxLength
         ? newContent.substring(0, maxLength - 3) + "..."
         : newContent;
-      
+
       embed.addFields(
         { name: "Before", value: `\`\`\`${beforeText}\`\`\`` },
         { name: "After", value: `\`\`\`${afterText}\`\`\`` }
       );
-      
+
       await logChannel.send({ embeds: [embed] });
     }
   } catch (err) {
@@ -510,7 +550,7 @@ client.on("messageDeleteBulk", async (messages) => {
     const withAttachments = [];
     const withEmbeds = [];
     const withStickers = [];
-    
+
     messages.forEach(msg => {
       if (msg.author) {
         authorCount.set(msg.author.id, (authorCount.get(msg.author.id) || 0) + 1);
@@ -526,27 +566,27 @@ client.on("messageDeleteBulk", async (messages) => {
       .slice(0, 5)
       .map(([id, count]) => `<@${id}>: ${count}`)
       .join("\n");
-    
+
     if (topAuthors) {
       summaryEmbed.addFields({ name: "Top Authors", value: topAuthors, inline: true });
     }
-    
+
     summaryEmbed.addFields(
       { name: "With Attachments", value: `${withAttachments.length}`, inline: true },
       { name: "With Embeds", value: `${withEmbeds.length}`, inline: true }
     );
 
     if (executor) {
-      summaryEmbed.setFooter({ 
-        text: `Deleted by ${executor.tag}`, 
-        iconURL: executor.displayAvatarURL({ dynamic: true }) 
+      summaryEmbed.setFooter({
+        text: `Deleted by ${executor.tag}`,
+        iconURL: executor.displayAvatarURL({ dynamic: true })
       });
     }
 
     // Create temporary directory for zip
     const tempDir = join(process.cwd(), 'temp', `bulk-delete-${Date.now()}`);
     await fs.mkdir(tempDir, { recursive: true });
-    
+
     try {
       // Sort messages by timestamp
       const sortedMessages = Array.from(messages.values()).sort(
@@ -572,11 +612,11 @@ client.on("messageDeleteBulk", async (messages) => {
         messagesLog += `Message ID: ${msg.id}\n`;
         messagesLog += `Timestamp: ${new Date(msg.createdTimestamp).toLocaleString()}\n`;
         messagesLog += `Content: ${msg.content || "[No text content]"}\n`;
-        
+
         if (msg.stickers.size > 0) {
           messagesLog += `Stickers: ${Array.from(msg.stickers.values()).map(s => s.name).join(", ")}\n`;
         }
-        
+
         if (msg.embeds.length > 0) {
           messagesLog += `Embeds: ${msg.embeds.length}\n`;
           msg.embeds.forEach((e, i) => {
@@ -591,11 +631,11 @@ client.on("messageDeleteBulk", async (messages) => {
             attachmentCount++;
             const safeFilename = `${index + 1}_${attachmentCount}_${attachment.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
             messagesLog += `  - ${attachment.name} (saved as: ${safeFilename})\n`;
-            
+
             try {
-              const response = await axios.get(attachment.url, { 
+              const response = await axios.get(attachment.url, {
                 responseType: 'arraybuffer',
-                timeout: 10000 
+                timeout: 10000
               });
               await fs.writeFile(join(tempDir, safeFilename), Buffer.from(response.data));
             } catch (err) {
@@ -619,7 +659,7 @@ client.on("messageDeleteBulk", async (messages) => {
         output.on('close', resolve);
         output.on('error', reject);
         archive.on('error', reject);
-        
+
         archive.pipe(output);
         archive.directory(tempDir, false);
         archive.finalize();
@@ -634,13 +674,13 @@ client.on("messageDeleteBulk", async (messages) => {
 
       // Cleanup
       await fs.rm(tempDir, { recursive: true, force: true });
-      await fs.unlink(zipPath).catch(() => {});
-      
+      await fs.unlink(zipPath).catch(() => { });
+
     } catch (err) {
       logger.error(`Error creating zip file: ${err.stack || err}`);
       // Cleanup on error
-      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-      
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => { });
+
       // Send summary embed without zip
       await logChannel.send({ embeds: [summaryEmbed] });
     }
