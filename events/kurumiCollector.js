@@ -3,9 +3,11 @@ import {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
+    StringSelectMenuBuilder,
 } from "discord.js";
 import { client } from "../bot.js";
 import KurumiImage from "../schema/kurumiImage.js";
+import KurumiCategory from "../schema/kurumiCategory.js";
 
 // Configuration
 const TARGET_CHANNEL_ID = "912942764000419850"; // Kurumi Shrine
@@ -104,15 +106,36 @@ client.on("messageReactionAdd", async (reaction, user) => {
                     .setFooter({ text: "Kurumi Image Collector" })
                     .setTimestamp();
 
-                const row = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder()
-                        .setCustomId(`delete_kurumi_${newImage._id}`)
-                        .setLabel("Delete from DB")
-                        .setStyle(ButtonStyle.Danger)
-                        .setEmoji("🗑️")
-                );
+                // Create Delete Button
+                const deleteBtn = new ButtonBuilder()
+                    .setCustomId(`delete_kurumi_${newImage._id}`)
+                    .setLabel("Delete DB")
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji("🗑️");
 
-                await logChannel.send({ embeds: [embed], components: [row] });
+                // Create Category Select Menu
+                const categories = await KurumiCategory.find({});
+                const rows = [];
+
+                if (categories.length > 0) {
+                    const options = categories.map((c) => ({
+                        label: c.name,
+                        value: c.name,
+                    }));
+
+                    const selectMenu = new StringSelectMenuBuilder()
+                        .setCustomId(`select_kurumi_category_${newImage._id}`)
+                        .setPlaceholder("Select a Category")
+                        .addOptions(options);
+
+                    rows.push(new ActionRowBuilder().addComponents(selectMenu));
+                }
+
+                // Add Delete Button to a separate row (or same if possible, but select menus take full width usually)
+                // Select Menus MUST be on their own row.
+                rows.push(new ActionRowBuilder().addComponents(deleteBtn));
+
+                await logChannel.send({ embeds: [embed], components: rows });
             }
         }
     } catch (error) {
@@ -120,47 +143,91 @@ client.on("messageReactionAdd", async (reaction, user) => {
     }
 });
 
-// Button Handler for Deletion
+// Interaction Handler
 client.on("interactionCreate", async (interaction) => {
-    if (!interaction.isButton()) return;
-    if (!interaction.customId.startsWith("delete_kurumi_")) return;
-
-    // Admin Check (Owner Only or Admin Perms)
+    // Admin Check
     if (
         !client.config.Owners.includes(interaction.user.id) &&
         !interaction.member.permissions.has("Administrator")
     ) {
-        return interaction.reply({
-            content: "You do not have permission to delete images.",
-            ephemeral: true,
-        });
+        // Only verify admin for our buttons
+        if (
+            interaction.customId?.startsWith("delete_kurumi_") ||
+            interaction.customId?.startsWith("select_kurumi_category_")
+        ) {
+            return interaction.reply({
+                content: "You do not have permission to manage images.",
+                ephemeral: true,
+            });
+        }
+        return;
     }
 
-    const imageId = interaction.customId.replace("delete_kurumi_", "");
+    // Deletion Handler
+    if (interaction.isButton() && interaction.customId.startsWith("delete_kurumi_")) {
+        const imageId = interaction.customId.replace("delete_kurumi_", "");
 
-    try {
-        await KurumiImage.findByIdAndDelete(imageId);
+        try {
+            await KurumiImage.findByIdAndDelete(imageId);
 
-        const disabledRow = new ActionRowBuilder().addComponents(
-            ButtonBuilder.from(interaction.component).setDisabled(true)
-        );
+            const disabledRow = new ActionRowBuilder().addComponents(
+                ButtonBuilder.from(interaction.component).setDisabled(true)
+            );
 
-        // Update the embed to show it was deleted
-        const oldEmbed = interaction.message.embeds[0];
-        const newEmbed = EmbedBuilder.from(oldEmbed)
-            .setColor("#57F287") // Green for done
-            .setTitle("🗑️ Image Deleted from Database");
+            // Update the embed to show it was deleted
+            const oldEmbed = interaction.message.embeds[0];
+            const newEmbed = EmbedBuilder.from(oldEmbed)
+                .setColor("#57F287") // Green for done
+                .setTitle("🗑️ Image Deleted from Database");
 
-        await interaction.update({
-            embeds: [newEmbed],
-            components: [disabledRow],
-        });
+            await interaction.update({
+                embeds: [newEmbed],
+                components: [disabledRow],
+            });
+        } catch (error) {
+            console.error("Error deleting kurumi image:", error);
+            await interaction.reply({
+                content: "Failed to delete image from database.",
+                ephemeral: true,
+            });
+        }
+    }
 
-    } catch (error) {
-        console.error("Error deleting kurumi image:", error);
-        await interaction.reply({
-            content: "Failed to delete image from database.",
-            ephemeral: true,
-        });
+    // Category Selection Handler
+    if (
+        interaction.isStringSelectMenu() &&
+        interaction.customId.startsWith("select_kurumi_category_")
+    ) {
+        const imageId = interaction.customId.replace("select_kurumi_category_", "");
+        const categoryName = interaction.values[0];
+
+        try {
+            const image = await KurumiImage.findByIdAndUpdate(
+                imageId,
+                { category: categoryName },
+                { new: true }
+            );
+
+            if (!image) {
+                return interaction.reply({ content: "Image not found.", ephemeral: true });
+            }
+
+            // Update Embed to show category
+            const oldEmbed = interaction.message.embeds[0];
+            const newEmbed = EmbedBuilder.from(oldEmbed).setDescription(
+                `**Source:** [Jump to Message](${oldEmbed.description.split("(")[1].split(")")[0]
+                })\n` +
+                `**ID:** \`${image._id}\`\n` +
+                `**Category:** ${categoryName}`
+            );
+
+            await interaction.update({ embeds: [newEmbed] });
+        } catch (error) {
+            console.error("Error updating category:", error);
+            await interaction.reply({
+                content: "Failed to update category.",
+                ephemeral: true,
+            });
+        }
     }
 });
