@@ -24,6 +24,15 @@ async function updateServerStats(guild) {
     // If any channel isn't found, exit early.
     if (!memberCountChannel || !botCountChannel || !channelCountChannel) return;
 
+    // Ensure we have all members cached for accurate count
+    if (guild.memberCount !== guild.members.cache.size) {
+      try {
+        await guild.members.fetch();
+      } catch (err) {
+        console.warn(`Failed to fetch members for stats update in ${guild.name}`);
+      }
+    }
+
     // Calculate updated stats.
     const totalMembers = guild.members.cache.filter((m) => !m.user.bot).size;
     const totalBots = guild.members.cache.filter((m) => m.user.bot).size;
@@ -84,8 +93,12 @@ client.on("ready", async () => {
   // For each guild, fetch all members to populate the cache.
   client.guilds.cache.forEach(async (guild) => {
     try {
-      await guild.members.fetch();
+      if (guild.memberCount !== guild.members.cache.size) {
+        await guild.members.fetch();
+      }
       console.log(`Fetched all members for: ${guild.name}`);
+      // Force an initial update to fix any incorrect numbers
+      await updateServerStats(guild);
     } catch (error) {
       console.error(`Failed to fetch members for ${guild.name}:`, error);
     }
