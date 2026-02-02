@@ -110,63 +110,63 @@ client.on("channelPinsUpdate", async (channel, time) => {
   }
 });
 
-// --------------------- Event: Emoji Create --------------------- //
-client.on("emojiCreate", async (emoji) => {
-  try {
-    const imageUrl = `https://cdn.discordapp.com/emojis/${emoji.id}.${emoji.animated ? "gif" : "png"
-      }?size=64`;
-    const embed = new EmbedBuilder()
-      .setColor(getRandomColor())
-      .setTitle(`Emoji Created: ${emoji.toString()}`)
-      .setDescription(`**Name:** ${emoji.name}\n**ID:** ${emoji.id}`)
-      .setThumbnail(imageUrl)
-      .setTimestamp();
-    const logChannel = client.channels.cache.get("902045721983844382");
-    if (logChannel) await logChannel.send({ embeds: [embed] });
-  } catch (err) {
-    logger.error("Error in emojiCreate event: " + (err.stack || err));
-  }
-});
+// // --------------------- Event: Emoji Create --------------------- //
+// client.on("emojiCreate", async (emoji) => {
+//   try {
+//     const imageUrl = `https://cdn.discordapp.com/emojis/${emoji.id}.${emoji.animated ? "gif" : "png"
+//       }?size=64`;
+//     const embed = new EmbedBuilder()
+//       .setColor(getRandomColor())
+//       .setTitle(`Emoji Created: ${emoji.toString()}`)
+//       .setDescription(`**Name:** ${emoji.name}\n**ID:** ${emoji.id}`)
+//       .setThumbnail(imageUrl)
+//       .setTimestamp();
+//     const logChannel = client.channels.cache.get("902045721983844382");
+//     if (logChannel) await logChannel.send({ embeds: [embed] });
+//   } catch (err) {
+//     logger.error("Error in emojiCreate event: " + (err.stack || err));
+//   }
+// });
 
-// --------------------- Event: Emoji Delete --------------------- //
-client.on("emojiDelete", async (emoji) => {
-  try {
-    const imageUrl = `https://cdn.discordapp.com/emojis/${emoji.id}.${emoji.animated ? "gif" : "png"
-      }?size=64`;
-    const embed = new EmbedBuilder()
-      .setColor(getRandomColor())
-      .setTitle("Emoji Deleted")
-      .setDescription(`**Name:** ${emoji.name}\n**ID:** ${emoji.id}`)
-      .setThumbnail(imageUrl)
-      .setTimestamp();
-    const logChannel = client.channels.cache.get("902045721983844382");
-    if (logChannel) await logChannel.send({ embeds: [embed] });
-  } catch (err) {
-    logger.error("Error in emojiDelete event: " + (err.stack || err));
-  }
-});
+// // --------------------- Event: Emoji Delete --------------------- //
+// client.on("emojiDelete", async (emoji) => {
+//   try {
+//     const imageUrl = `https://cdn.discordapp.com/emojis/${emoji.id}.${emoji.animated ? "gif" : "png"
+//       }?size=64`;
+//     const embed = new EmbedBuilder()
+//       .setColor(getRandomColor())
+//       .setTitle("Emoji Deleted")
+//       .setDescription(`**Name:** ${emoji.name}\n**ID:** ${emoji.id}`)
+//       .setThumbnail(imageUrl)
+//       .setTimestamp();
+//     const logChannel = client.channels.cache.get("902045721983844382");
+//     if (logChannel) await logChannel.send({ embeds: [embed] });
+//   } catch (err) {
+//     logger.error("Error in emojiDelete event: " + (err.stack || err));
+//   }
+// });
 
-// --------------------- Event: Emoji Update --------------------- //
-client.on("emojiUpdate", async (oldEmoji, newEmoji) => {
-  try {
-    const embed = new EmbedBuilder()
-      .setColor(getRandomColor())
-      .setTitle("Emoji Updated")
-      .setDescription(
-        `**Before:** ${oldEmoji.name}\n**After:** ${newEmoji.name}`
-      )
-      .setThumbnail(
-        `https://cdn.discordapp.com/emojis/${newEmoji.id}.${newEmoji.animated ? "gif" : "png"
-        }?size=64`
-      )
-      .setTimestamp()
-      .setFooter({ text: newEmoji.id });
-    const logChannel = client.channels.cache.get("902045721983844382");
-    if (logChannel) await logChannel.send({ embeds: [embed] });
-  } catch (err) {
-    logger.error("Error in emojiUpdate event: " + (err.stack || err));
-  }
-});
+// // --------------------- Event: Emoji Update --------------------- //
+// client.on("emojiUpdate", async (oldEmoji, newEmoji) => {
+//   try {
+//     const embed = new EmbedBuilder()
+//       .setColor(getRandomColor())
+//       .setTitle("Emoji Updated")
+//       .setDescription(
+//         `**Before:** ${oldEmoji.name}\n**After:** ${newEmoji.name}`
+//       )
+//       .setThumbnail(
+//         `https://cdn.discordapp.com/emojis/${newEmoji.id}.${newEmoji.animated ? "gif" : "png"
+//         }?size=64`
+//       )
+//       .setTimestamp()
+//       .setFooter({ text: newEmoji.id });
+//     const logChannel = client.channels.cache.get("902045721983844382");
+//     if (logChannel) await logChannel.send({ embeds: [embed] });
+//   } catch (err) {
+//     logger.error("Error in emojiUpdate event: " + (err.stack || err));
+//   }
+// });
 
 // --------------------- Event: Guild Member Add --------------------- //
 client.on("guildMemberAdd", async (member) => {
