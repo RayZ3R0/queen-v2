@@ -35,8 +35,8 @@ client.on("messageCreate", async (message) => {
     const warningEmbed = new EmbedBuilder()
       .setColor("#FFA500")
       .setDescription(
-        `👋 Hi ${message.author}! To send embeds, links, or images in this category, you need to be **Level 5**. ` +
-        `Keep chatting to level up! 💬✨`
+        `Hi ${message.author}, to send embeds, links, or images in this category, you need to be **Level 5** or higher. ` +
+        `Please continue chatting to increase your level.`
       );
 
     try {
