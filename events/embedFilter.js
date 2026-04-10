@@ -19,7 +19,8 @@ client.on("messageCreate", async (message) => {
 
     // Check if user has the required role
     const requiredRoleId = "1011566110354710650";
-    if (message.member.roles.cache.has(requiredRoleId)) return;
+    const bypassRoleId = "927097726934601729";
+    if (message.member.roles.cache.has(requiredRoleId) || message.member.roles.cache.has(bypassRoleId)) return;
 
     // Check user's level
     const levelData = await levelModel.findOne({ 
