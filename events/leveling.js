@@ -27,6 +27,16 @@ client.on("messageCreate", async (message) => {
   if (IGNORED_CHANNELS.includes(message.channel.id)) return;
   if (IGNORED_CATEGORIES.includes(message.channel.parentId)) return;
 
+  // Ignore threads from ignored channels and categories
+  if (message.channel.isThread?.()) {
+    const parentChannelId = message.channel.parentId;
+    if (IGNORED_CHANNELS.includes(parentChannelId)) return;
+    
+    // Check if parent channel is in an ignored category
+    const parentChannel = await message.guild.channels.fetch(parentChannelId);
+    if (parentChannel && IGNORED_CATEGORIES.includes(parentChannel.parentId)) return;
+  }
+
   // Ignore if user is on cooldown
   if (USER_COOLDOWNS.has(message.author.id)) return;
 
