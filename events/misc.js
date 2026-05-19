@@ -79,6 +79,9 @@ client.on("messageCreate", async (message) => {
     // Ignore if the message is in the specified category
     if (message.channel.parentId === "968036263678591036") return;
 
+    // Ignore users with the specified role
+    if (message.member.roles.cache.has("1011566110354710650")) return;
+
     // Check if the message contains "partnership", "partnerships", or "partner" (case-insensitive)
     const lowerContent = message.content.toLowerCase();
     if (
