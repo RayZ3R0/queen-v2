@@ -113,6 +113,13 @@ export const analyzeMessage = (message) => {
   const now = Date.now();
   const timeWindow = now - TIME_WINDOW_SECONDS * 1000;
 
+  // Initialize spam detection flags early
+  const isSpam = {
+    crossChannelSpam: false,
+    duplicateContent: false,
+    linkSpam: false,
+  };
+
   // Update message tracking
   const userMessageList = userMessages.get(messageKey);
   userMessageList.push({
@@ -129,6 +136,16 @@ export const analyzeMessage = (message) => {
   ) {
     userMessageList.shift();
   }
+
+  // Analyze for spam patterns early (needed for deceptive link detection)
+  const channelCounts = new Map();
+  const duplicateMessages = userMessageList.filter((msg) => {
+    channelCounts.set(
+      msg.channelId,
+      (channelCounts.get(msg.channelId) || 0) + 1
+    );
+    return msg.content === normalizedContent;
+  }).length;
 
   // Update link tracking with enhanced URL normalization
   const userLinkMap = userLinks.get(messageKey);
@@ -175,24 +192,10 @@ export const analyzeMessage = (message) => {
     }
   }
 
-  // Analyze for spam patterns
-  const channelCounts = new Map();
-  const duplicateMessages = userMessageList.filter((msg) => {
-    channelCounts.set(
-      msg.channelId,
-      (channelCounts.get(msg.channelId) || 0) + 1
-    );
-    return msg.content === normalizedContent;
-  }).length;
-
   // Check for spam conditions - only check cross-channel spam with links
   const hasLinks = links.length > 0;
-  const isSpam = {
-    crossChannelSpam:
-      hasLinks && channelCounts.size >= MESSAGE_DUPLICATE_THRESHOLD,
-    duplicateContent: false, // Ignore same-channel duplicates
-    linkSpam: false,
-  };
+  isSpam.crossChannelSpam =
+    hasLinks && channelCounts.size >= MESSAGE_DUPLICATE_THRESHOLD;
 
   // Check for link spam
   for (const [link, count] of userLinkMap.entries()) {
