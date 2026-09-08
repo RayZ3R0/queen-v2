@@ -1,4 +1,4 @@
-import { InteractionType, EmbedBuilder } from "discord.js";
+import { InteractionType, EmbedBuilder, PermissionFlagsBits } from "discord.js";
 import { client } from "../bot.js";
 import {
   validatePermissions,
@@ -61,9 +61,30 @@ client.on("interactionCreate", async (interaction) => {
 
     // Handle Button Interactions
     if (interaction.isButton()) {
+      const customId = interaction.customId;
+
+      // Handle Embed Fixer Delete Button
+      if (customId.startsWith("delete_embed_fix_")) {
+        const authorId = customId.replace("delete_embed_fix_", "");
+        const isAuthor = interaction.user.id === authorId;
+        const isMod = interaction.member?.permissions?.has(
+          PermissionFlagsBits.ManageMessages
+        );
+
+        if (isAuthor || isMod) {
+          await interaction.message.delete().catch(() => {});
+          return;
+        } else {
+          return interaction.reply({
+            content:
+              "❌ Only the original sender or a moderator can delete this message.",
+            ephemeral: true,
+          });
+        }
+      }
+
       // Try to find command by customId
       let command = null;
-      const customId = interaction.customId;
 
       // Check for specific button patterns
       if (
