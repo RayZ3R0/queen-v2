@@ -26,19 +26,15 @@ export default {
         return interaction.editReply({ content: "No level roles configured." });
       }
 
-      // Limit display to at most 11 roles
-      const maxDisplay = 11;
-      const displayedRoles = rolesData.slice(0, maxDisplay).map((roleEntry) => {
-        const roleInstance = interaction.guild.roles.cache.get(roleEntry.role);
-        return `**${roleEntry.lvl}** | ${
-          roleInstance ? roleInstance : "Role not found"
-        }`;
-      });
-
-      // Append note if there are extra roles beyond the first 11
-      if (rolesData.length > maxDisplay) {
-        displayedRoles.push(`...and ${rolesData.length - maxDisplay} more.`);
-      }
+      // Sort roles by level ascending and display all configured roles
+      const displayedRoles = [...rolesData]
+        .sort((a, b) => Number(a.lvl) - Number(b.lvl))
+        .map((roleEntry) => {
+          const roleInstance = interaction.guild.roles.cache.get(roleEntry.role);
+          return `**${roleEntry.lvl}** | ${
+            roleInstance ? roleInstance : "Role not found"
+          }`;
+        });
 
       const randomColor = `#${Math.floor(Math.random() * 16777215)
         .toString(16)
