@@ -7,42 +7,57 @@ class roleSetup {
    * @param {object} options - { level: number, role: string }
    */
   static async add(client, guildID, options = {}) {
-    let rol = await lrole.findOne({
-      gid: guildID,
-      lvlrole: {
-        lvl: options.level,
-        role: options.role,
-      },
-    });
+    const guild = client.guilds.cache.get(guildID) || (await client.guilds.fetch(guildID).catch(() => null));
+    if (!guild) {
+      throw new Error(`Guild with ID ${guildID} not found.`);
+    }
 
-    const g = client.guilds.cache.get(guildID);
-    const roll = g.roles.cache.find((r) => r.id === options.role);
+    const role =
+      guild.roles.cache.get(options.role) ||
+      (await guild.roles.fetch(options.role).catch(() => null));
 
-    if (roll) {
-      if (rol) throw new Error("Level Already Exist. Use delete");
-      else {
-        let newrol = await lrole.findOne({ gid: guildID });
-        if (!newrol) {
-          newrol = new lrole({
-            gid: guildID,
-            lvlrole: [],
-          });
-          await newrol.save();
-        }
-        newrol.lvlrole.push({ lvl: options.level, role: options.role });
-        await newrol
-          .save()
-          .catch((e) =>
-            console.log(`[XP] Failed to add lvlrole to database | ${e}`)
-          );
-        return true;
-      }
-    } else {
+    if (!role) {
       throw new Error(
-        "Role ID is invalid. | " +
-          `Guild ID: ${guildID} | Role ID: ${options.role}`
+        `Role ID is invalid or not found. | Guild ID: ${guildID} | Role ID: ${options.role}`
       );
     }
+
+    const level = Number(options.level);
+    if (isNaN(level) || level < 0) {
+      throw new Error("Invalid level number specified.");
+    }
+
+    let doc = await lrole.findOne({ gid: guildID });
+    if (!doc) {
+      doc = new lrole({
+        gid: guildID,
+        lvlrole: [],
+      });
+    }
+
+    if (!Array.isArray(doc.lvlrole)) {
+      doc.lvlrole = [];
+    }
+
+    // Check if level already exists
+    const existingIndex = doc.lvlrole.findIndex(
+      (item) => Number(item.lvl) === level
+    );
+
+    let updated = false;
+    if (existingIndex !== -1) {
+      doc.lvlrole[existingIndex].role = role.id;
+      updated = true;
+    } else {
+      doc.lvlrole.push({ lvl: level, role: role.id });
+    }
+
+    // Keep level roles sorted ascending by level
+    doc.lvlrole.sort((a, b) => Number(a.lvl) - Number(b.lvl));
+    doc.markModified("lvlrole");
+    await doc.save();
+
+    return { updated, level, role };
   }
 
   /**
@@ -51,20 +66,29 @@ class roleSetup {
    * @param {object} options - { level: number }
    */
   static async remove(client, guildID, options = {}) {
-    let rol = await lrole.find({ gid: guildID });
-    if (!rol || rol.length === 0)
-      throw new Error("Level role with this level does not exist");
+    const level = Number(options.level);
+    if (isNaN(level) || level < 0) {
+      throw new Error("Invalid level number specified.");
+    }
 
-    rol =
-      rol[0].lvlrole.find((item) => item.lvl === options.level) || undefined;
+    const doc = await lrole.findOne({ gid: guildID });
+    if (!doc || !Array.isArray(doc.lvlrole) || doc.lvlrole.length === 0) {
+      throw new Error("No level roles configured for this server.");
+    }
 
-    if (rol) {
-      await lrole.findOneAndUpdate(
-        { gid: guildID },
-        { $pull: { lvlrole: { lvl: options.level } } }
-      );
-      return true;
-    } else throw new Error("Level role with this level does not exist");
+    const existingIndex = doc.lvlrole.findIndex(
+      (item) => Number(item.lvl) === level
+    );
+
+    if (existingIndex === -1) {
+      throw new Error(`No level role found for level ${level}.`);
+    }
+
+    const removedEntry = doc.lvlrole.splice(existingIndex, 1)[0];
+    doc.markModified("lvlrole");
+    await doc.save();
+
+    return removedEntry;
   }
 
   /**
