@@ -1,4 +1,5 @@
 import { PermissionFlagsBits } from "discord.js";
+import { sendErrorToChannel } from "./errorLogger.js";
 
 /**
  * Validates role hierarchy for moderation commands
@@ -125,6 +126,10 @@ const formatPermissions = (permissions) => {
  */
 export const handleCommandError = async (interaction, error) => {
   console.error(`Command Error in ${interaction.commandName}:`, error);
+  sendErrorToChannel(
+    error,
+    `Slash Command /${interaction.commandName || "unknown"} (User: ${interaction.user?.tag || interaction.user?.id})`
+  );
 
   const errorMessages = {
     PermissionError: "You don't have permission to use this command.",

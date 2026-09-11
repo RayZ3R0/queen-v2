@@ -15,6 +15,7 @@ import archiver from "archiver";
 import { createWriteStream, promises as fs } from "fs";
 import { join } from "path";
 import { client } from "../bot.js"; // Ensure your bot.js exports your initialized client
+import { sendErrorToChannel } from "../utils/errorLogger.js";
 
 // --------------------- Logger Setup --------------------- //
 const logger = winston.createLogger({
@@ -34,12 +35,14 @@ process.on("unhandledRejection", (reason, promise) => {
     chalk.red("Unhandled rejection detected.")
   );
   logger.error(reason.stack || reason);
+  sendErrorToChannel(reason, "AntiCrash: Unhandled Rejection");
 });
 process.on("uncaughtException", (err, origin) => {
   logger.error(
     chalk.blueBright("[antiCrash] ") + chalk.red("Uncaught exception detected.")
   );
   logger.error(err.stack || err);
+  sendErrorToChannel(err, "AntiCrash: Uncaught Exception");
 });
 process.on("uncaughtExceptionMonitor", (err, origin) => {
   logger.error(

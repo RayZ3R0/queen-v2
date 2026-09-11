@@ -28,12 +28,23 @@ client.build(client.config.TOKEN);
  * @module BotInitialization
  */
 
+import { sendErrorToChannel } from "./utils/errorLogger.js";
+
+// Handle Discord client errors
+client.on("error", (error) => {
+  console.error("Discord Client Error:", error);
+  sendErrorToChannel(error, "Discord Client Error");
+});
+
 // Handle uncaught exceptions
 process.on("uncaughtException", (error) => {
   console.error("An uncaught exception occurred:", error);
+  sendErrorToChannel(error, "Uncaught Exception");
 });
 
 // Handle unhandled promise rejections
 process.on("unhandledRejection", (error) => {
   console.error("An unhandled promise rejection occurred:", error);
+  sendErrorToChannel(error, "Unhandled Rejection");
 });
+

@@ -1,5 +1,6 @@
 import { getCooldown, setCooldown } from "../handlers/functions.js";
 import { client } from "../bot.js";
+import { sendErrorToChannel } from "../utils/errorLogger.js";
 
 client.on("messageCreate", async (message) => {
   try {
@@ -137,6 +138,10 @@ client.on("messageCreate", async (message) => {
       }
     } catch (error) {
       console.error("Command error:", error);
+      sendErrorToChannel(
+        error,
+        `Message Command: \`${command.name}\` (User: ${message.author.tag || message.author.id})`
+      );
       await client.sendEmbed(
         message,
         "An error occurred while executing that command. The cooldown will not be applied."
@@ -154,6 +159,7 @@ client.on("messageCreate", async (message) => {
       "An error occurred while processing messageCreate event:",
       error
     );
+    sendErrorToChannel(error, "messageCreate Event Error");
   }
 });
 
