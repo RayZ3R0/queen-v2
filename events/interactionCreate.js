@@ -83,6 +83,31 @@ client.on("interactionCreate", async (interaction) => {
         }
       }
 
+      // Handle Embed Filter Warning Delete Button
+      if (customId.startsWith("delete_embed_warn_")) {
+        const authorId = customId.replace("delete_embed_warn_", "");
+        const isAuthor = interaction.user.id === authorId;
+        const isModOrAdmin =
+          interaction.member?.permissions?.has(
+            PermissionFlagsBits.ManageMessages
+          ) ||
+          interaction.member?.permissions?.has(
+            PermissionFlagsBits.Administrator
+          ) ||
+          interaction.member?.roles?.cache?.has("920210140093902868");
+
+        if (isAuthor || isModOrAdmin) {
+          await interaction.message.delete().catch(() => {});
+          return;
+        } else {
+          return interaction.reply({
+            content:
+              "❌ Only the original sender, a moderator, or an administrator can delete this message.",
+            ephemeral: true,
+          });
+        }
+      }
+
       // Try to find command by customId
       let command = null;
 
