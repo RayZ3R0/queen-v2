@@ -96,7 +96,7 @@ export function getFixedUrl(rawUrl) {
 
   // 4. Reddit
   if ((hostname === "reddit.com" || hostname === "old.reddit.com") && (pathname.includes("/comments/") || pathname.includes("/s/"))) {
-    return `https://rxddit.com${pathname}`;
+    return `https://vxreddit.com${pathname}`;
   }
 
   // 5. Bluesky
